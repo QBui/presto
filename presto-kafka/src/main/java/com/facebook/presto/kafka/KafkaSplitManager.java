@@ -67,6 +67,7 @@ public class KafkaSplitManager
 
         List<KafkaPartition> partitions = layoutHandle.getPartitions();
         ImmutableList<ConnectorSplit> splits = partitions.stream()
+                .filter(partition -> partition.getOffsetStart() < partition.getOffsetEnd()) // Split end is exclusive.
                 .map(partition -> new KafkaSplit(
                                 connectorId,
                                 kafkaTableHandle.getTopicName(),

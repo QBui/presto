@@ -121,6 +121,7 @@ public class KafkaPartitionManager
                 partitionValuesBuilder.put(partitionColumns.get(3), NullableValue.of(BigintType.BIGINT, Long.parseLong(topicTsPair[1])));
                 ImmutableMap<ColumnHandle, NullableValue> partitionValues = partitionValuesBuilder.build();
                 if (constraint.predicate().test(partitionValues)) {
+//                    log.debug("Adding Partition %s/%s from %s to %s", topicName, partitionId, offsets[i], offsets[i - 1]);
                     partitions.add(new KafkaPartition(partitionValues, partitionWithLeader.get(Integer.parseInt(partitionOffsetPair[0])),
                             Integer.parseInt(partitionOffsetPair[0]), Long.parseLong(partitionOffsetPair[1]), Long.parseLong(partitionOffsetPair[2]),
                             Long.parseLong(topicTsPair[1])));
@@ -149,7 +150,7 @@ public class KafkaPartitionManager
                         partitionValuesBuilder.put(partitionColumns.get(2), NullableValue.of(BigintType.BIGINT, offsets[i - 1]));
                         ImmutableMap<ColumnHandle, NullableValue> partitionValues = partitionValuesBuilder.build();
                         if (constraint.predicate().test(partitionValues)) {
-                            log.debug("Adding Partition %s/%s", topicName, partitionId);
+                            log.debug("Adding partition %s/%s, offset from %s to %s", topicName, partitionId, offsets[i], offsets[i - 1]);
                             partitions.add(new KafkaPartition(partitionValues, partitionLeader, partitionId, offsets[i], offsets[i - 1], -1));
                         }
                     }
