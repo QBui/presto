@@ -60,8 +60,11 @@ public class ParquetReader
     private static final String MAP_TYPE_NAME = "map";
     private static final String MAP_KEY_NAME = "key";
     private static final String MAP_VALUE_NAME = "value";
-    private static final String ARRAY_TYPE_NAME = "bag";
-    private static final String ARRAY_ELEMENT_NAME = "array_element";
+    private static final String ARRAY_TYPE_NAME = "list";
+    private static final String ARRAY_ELEMENT_NAME = "element";
+
+//    private static final String ARRAY_TYPE_NAME = "bag";
+//    private static final String ARRAY_ELEMENT_NAME = "array_element";
 
     private final MessageType fileSchema;
     private final MessageType requestedSchema;
@@ -172,7 +175,7 @@ public class ParquetReader
 
         int[] offsets = new int[batchSize + 1];
         for (int i = 1; i < offsets.length; i++) {
-            offsets[i] = offsets[i - 1] + elementOffsets.getInt(i - 1);
+            offsets[i] = offsets[i - 1] + 1;
         }
         return new ArrayBlock(batchSize, new boolean[batchSize], offsets, block);
     }
