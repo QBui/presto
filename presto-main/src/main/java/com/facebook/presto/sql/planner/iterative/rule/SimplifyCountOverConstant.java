@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
@@ -44,13 +45,17 @@ import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 public class SimplifyCountOverConstant
         implements Rule
 {
+    private static final Pattern PATTERN = Pattern.typeOf(AggregationNode.class);
+
+    @Override
+    public Pattern getPattern()
+    {
+        return PATTERN;
+    }
+
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
-        if (!(node instanceof AggregationNode)) {
-            return Optional.empty();
-        }
-
         AggregationNode parent = (AggregationNode) node;
 
         PlanNode input = lookup.resolve(parent.getSource());
@@ -61,15 +66,15 @@ public class SimplifyCountOverConstant
         ProjectNode child = (ProjectNode) input;
 
         boolean changed = false;
-        Map<Symbol, AggregationNode.Aggregation> assignments = new LinkedHashMap<>(parent.getAssignments());
+        Map<Symbol, AggregationNode.Aggregation> aggregations = new LinkedHashMap<>(parent.getAggregations());
 
-        for (Entry<Symbol, AggregationNode.Aggregation> entry : parent.getAssignments().entrySet()) {
+        for (Entry<Symbol, AggregationNode.Aggregation> entry : parent.getAggregations().entrySet()) {
             Symbol symbol = entry.getKey();
             AggregationNode.Aggregation aggregation = entry.getValue();
 
             if (isCountOverConstant(aggregation, child.getAssignments())) {
                 changed = true;
-                assignments.put(symbol, new AggregationNode.Aggregation(
+                aggregations.put(symbol, new AggregationNode.Aggregation(
                         new FunctionCall(QualifiedName.of("count"), ImmutableList.of()),
                         new Signature("count", AGGREGATE, parseTypeSignature(StandardTypes.BIGINT)),
                         aggregation.getMask()));
@@ -83,7 +88,7 @@ public class SimplifyCountOverConstant
         return Optional.of(new AggregationNode(
                 node.getId(),
                 child,
-                assignments,
+                aggregations,
                 parent.getGroupingSets(),
                 parent.getStep(),
                 parent.getHashSymbol(),

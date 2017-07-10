@@ -38,6 +38,7 @@ import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.IntersectNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.MarkDistinctNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
@@ -169,7 +170,7 @@ public class UnaliasSymbolReferences
         public PlanNode visitExplainAnalyze(ExplainAnalyzeNode node, RewriteContext<Void> context)
         {
             PlanNode source = context.rewrite(node.getSource());
-            return new ExplainAnalyzeNode(node.getId(), source, canonicalize(node.getOutputSymbol()));
+            return new ExplainAnalyzeNode(node.getId(), source, canonicalize(node.getOutputSymbol()), node.isVerbose());
         }
 
         @Override
@@ -437,6 +438,16 @@ public class UnaliasSymbolReferences
             List<Symbol> canonicalCorrelation = Lists.transform(node.getCorrelation(), this::canonicalize);
 
             return new ApplyNode(node.getId(), source, subquery, canonicalize(node.getSubqueryAssignments()), canonicalCorrelation);
+        }
+
+        @Override
+        public PlanNode visitLateralJoin(LateralJoinNode node, RewriteContext<Void> context)
+        {
+            PlanNode source = context.rewrite(node.getInput());
+            PlanNode subquery = context.rewrite(node.getSubquery());
+            List<Symbol> canonicalCorrelation = canonicalizeAndDistinct(node.getCorrelation());
+
+            return new LateralJoinNode(node.getId(), source, subquery, canonicalCorrelation, node.getType());
         }
 
         @Override

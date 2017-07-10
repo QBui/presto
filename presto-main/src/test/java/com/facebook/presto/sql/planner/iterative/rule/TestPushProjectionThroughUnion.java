@@ -14,7 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
+import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.LongLiteral;
@@ -23,25 +23,23 @@ import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.expression;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.union;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 
 public class TestPushProjectionThroughUnion
+        extends BaseRuleTest
 {
-    private final RuleTester tester = new RuleTester();
-
     @Test
     public void testDoesNotFire()
             throws Exception
     {
-        tester.assertThat(new PushProjectionThroughUnion())
+        tester().assertThat(new PushProjectionThroughUnion())
                 .on(p ->
                         p.project(
-                                Assignments.of(p.symbol("x", BIGINT), new LongLiteral("3")),
-                                p.values(p.symbol("a", BIGINT))))
+                                Assignments.of(p.symbol("x"), new LongLiteral("3")),
+                                p.values(p.symbol("a"))))
                 .doesNotFire();
     }
 
@@ -49,12 +47,12 @@ public class TestPushProjectionThroughUnion
     public void test()
             throws Exception
     {
-        tester.assertThat(new PushProjectionThroughUnion())
+        tester().assertThat(new PushProjectionThroughUnion())
                 .on(p -> {
-                    Symbol a = p.symbol("a", BIGINT);
-                    Symbol b = p.symbol("b", BIGINT);
-                    Symbol c = p.symbol("c", BIGINT);
-                    Symbol cTimes3 = p.symbol("c_times_3", BIGINT);
+                    Symbol a = p.symbol("a");
+                    Symbol b = p.symbol("b");
+                    Symbol c = p.symbol("c");
+                    Symbol cTimes3 = p.symbol("c_times_3");
                     return p.project(
                             Assignments.of(cTimes3, new ArithmeticBinaryExpression(ArithmeticBinaryExpression.Type.MULTIPLY, c.toSymbolReference(), new LongLiteral("3"))),
                             p.union(

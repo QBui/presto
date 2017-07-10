@@ -72,7 +72,7 @@ public class SliceDictionaryStreamReader
     @Nonnull
     private Slice[] stripeDictionary = new Slice[1];
 
-    private SliceArrayBlock dictionaryBlock = new SliceArrayBlock(stripeDictionary.length, stripeDictionary);
+    private SliceArrayBlock dictionaryBlock = new SliceArrayBlock(stripeDictionary.length, stripeDictionary, true);
 
     @Nonnull
     private InputStreamSource<LongInputStream> stripeDictionaryLengthStreamSource = missingStreamSource(LongInputStream.class);
@@ -184,7 +184,6 @@ public class SliceDictionaryStreamReader
             }
         }
 
-        // copy ids into a private array for this block since data vector is reused
         Block block = new DictionaryBlock(nextBatchSize, dictionaryBlock, dataVector);
 
         readOffset = 0;
@@ -197,7 +196,7 @@ public class SliceDictionaryStreamReader
         // only update the block if the array changed to prevent creation of new Block objects, since
         // the engine currently uses identity equality to test if dictionaries are the same
         if (dictionaryBlock.getValues() != dictionary) {
-            dictionaryBlock = new SliceArrayBlock(dictionary.length, dictionary);
+            dictionaryBlock = new SliceArrayBlock(dictionary.length, dictionary, true);
         }
     }
 

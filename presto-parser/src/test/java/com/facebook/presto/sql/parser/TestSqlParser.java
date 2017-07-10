@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.parser;
 
 import com.facebook.presto.sql.tree.AddColumn;
+import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArrayConstructor;
@@ -68,6 +69,7 @@ import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.LambdaExpression;
+import com.facebook.presto.sql.tree.Lateral;
 import com.facebook.presto.sql.tree.LikeClause;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
 import com.facebook.presto.sql.tree.LongLiteral;
@@ -1545,15 +1547,17 @@ public class TestSqlParser
             throws Exception
     {
         assertStatement("EXPLAIN SELECT * FROM t",
-                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), false, ImmutableList.of()));
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), false, false, ImmutableList.of()));
         assertStatement("EXPLAIN (TYPE LOGICAL) SELECT * FROM t",
                 new Explain(
                         simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))),
+                        false,
                         false,
                         ImmutableList.of(new ExplainType(ExplainType.Type.LOGICAL))));
         assertStatement("EXPLAIN (TYPE LOGICAL, FORMAT TEXT) SELECT * FROM t",
                 new Explain(
                         simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))),
+                        false,
                         false,
                         ImmutableList.of(
                                 new ExplainType(ExplainType.Type.LOGICAL),
@@ -1561,11 +1565,51 @@ public class TestSqlParser
     }
 
     @Test
+    public void testExplainVerbose()
+            throws Exception
+    {
+        assertStatement("EXPLAIN VERBOSE SELECT * FROM t",
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), false, true, ImmutableList.of()));
+    }
+
+    @Test
+    public void testExplainVerboseTypeLogical()
+            throws Exception
+    {
+        assertStatement("EXPLAIN VERBOSE (type LOGICAL) SELECT * FROM t",
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), false, true, ImmutableList.of(new ExplainType(ExplainType.Type.LOGICAL))));
+    }
+
+    @Test
     public void testExplainAnalyze()
             throws Exception
     {
         assertStatement("EXPLAIN ANALYZE SELECT * FROM t",
-                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), true, ImmutableList.of()));
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), true, false, ImmutableList.of()));
+    }
+
+    @Test
+    public void testExplainAnalyzeTypeDistributed()
+            throws Exception
+    {
+        assertStatement("EXPLAIN ANALYZE (type DISTRIBUTED) SELECT * FROM t",
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), true, false, ImmutableList.of(new ExplainType(ExplainType.Type.DISTRIBUTED))));
+    }
+
+    @Test
+    public void testExplainAnalyzeVerbose()
+            throws Exception
+    {
+        assertStatement("EXPLAIN ANALYZE VERBOSE SELECT * FROM t",
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), true, true, ImmutableList.of()));
+    }
+
+    @Test
+    public void testExplainAnalyzeVerboseTypeDistributed()
+            throws Exception
+    {
+        assertStatement("EXPLAIN ANALYZE VERBOSE (type DISTRIBUTED) SELECT * FROM t",
+                new Explain(simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), true, true, ImmutableList.of(new ExplainType(ExplainType.Type.DISTRIBUTED))));
     }
 
     @Test
@@ -1628,6 +1672,52 @@ public class TestSqlParser
                                 new Table(QualifiedName.of("t")),
                                 new Unnest(ImmutableList.of(new Identifier("a")), true),
                                 Optional.empty())));
+        assertStatement("SELECT * FROM t FULL JOIN UNNEST(a) ON true",
+                simpleQuery(
+                        selectList(new AllColumns()),
+                        new Join(
+                                Join.Type.FULL,
+                                new Table(QualifiedName.of("t")),
+                                new Unnest(ImmutableList.of(new Identifier("a")), true),
+                                Optional.of(new JoinOn(BooleanLiteral.TRUE_LITERAL)))));
+    }
+
+    @Test
+    public void testLateral()
+            throws Exception
+    {
+        Lateral lateralRelation = new Lateral(new Query(
+                Optional.empty(),
+                new Values(ImmutableList.of(new LongLiteral("1"))),
+                Optional.empty(),
+                Optional.empty()));
+
+        assertStatement("SELECT * FROM t, LATERAL (VALUES 1) a(x)",
+                simpleQuery(
+                        selectList(new AllColumns()),
+                        new Join(
+                                Join.Type.IMPLICIT,
+                                new Table(QualifiedName.of("t")),
+                                new AliasedRelation(lateralRelation, "a", ImmutableList.of("x")),
+                                Optional.empty())));
+
+        assertStatement("SELECT * FROM t CROSS JOIN LATERAL (VALUES 1) ",
+                simpleQuery(
+                        selectList(new AllColumns()),
+                        new Join(
+                                Join.Type.CROSS,
+                                new Table(QualifiedName.of("t")),
+                                lateralRelation,
+                                Optional.empty())));
+
+        assertStatement("SELECT * FROM t FULL JOIN LATERAL (VALUES 1) ON true",
+                simpleQuery(
+                        selectList(new AllColumns()),
+                        new Join(
+                                Join.Type.FULL,
+                                new Table(QualifiedName.of("t")),
+                                lateralRelation,
+                                Optional.of(new JoinOn(BooleanLiteral.TRUE_LITERAL)))));
     }
 
     @Test
@@ -1746,6 +1836,10 @@ public class TestSqlParser
                         table(QualifiedName.of("t"))));
 
         assertExpression("stats", new Identifier("stats"));
+        assertExpression("nfd", new Identifier("nfd"));
+        assertExpression("nfc", new Identifier("nfc"));
+        assertExpression("nfkd", new Identifier("nfkd"));
+        assertExpression("nfkc", new Identifier("nfkc"));
     }
 
     @Test

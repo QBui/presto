@@ -29,13 +29,16 @@ import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.security.Identity;
+import com.facebook.presto.spi.type.ArrayType;
+import com.facebook.presto.spi.type.MapType;
+import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.sql.ExpressionUtils;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.planner.DependencyExtractor;
 import com.facebook.presto.sql.planner.ExpressionInterpreter;
+import com.facebook.presto.sql.planner.SymbolsExtractor;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
@@ -73,6 +76,7 @@ import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinCriteria;
 import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.JoinUsing;
+import com.facebook.presto.sql.tree.Lateral;
 import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.NaturalJoin;
 import com.facebook.presto.sql.tree.Node;
@@ -109,9 +113,6 @@ import com.facebook.presto.sql.tree.WindowFrame;
 import com.facebook.presto.sql.tree.With;
 import com.facebook.presto.sql.tree.WithQuery;
 import com.facebook.presto.sql.util.AstUtils;
-import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.MapType;
-import com.facebook.presto.type.RowType;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -194,6 +195,7 @@ import static com.google.common.collect.Iterables.getLast;
 import static com.google.common.collect.Iterables.transform;
 import static java.lang.Math.toIntExact;
 import static java.util.Collections.emptyList;
+import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 
 class StatementAnalyzer
@@ -646,6 +648,14 @@ class StatementAnalyzer
         }
 
         @Override
+        protected Scope visitLateral(Lateral node, Optional<Scope> scope)
+        {
+            StatementAnalyzer analyzer = new StatementAnalyzer(analysis, metadata, sqlParser, accessControl, session);
+            Scope queryScope = analyzer.analyze(node.getQuery(), scope);
+            return createAndAssignScope(node, scope, queryScope.getRelationType());
+        }
+
+        @Override
         protected Scope visitTable(Table table, Optional<Scope> scope)
         {
             if (!table.getName().getPrefix().isPresent()) {
@@ -803,7 +813,7 @@ class StatementAnalyzer
         @Override
         protected Scope visitSampledRelation(SampledRelation relation, Optional<Scope> scope)
         {
-            if (!DependencyExtractor.extractNames(relation.getSamplePercentage(), analysis.getColumnReferences()).isEmpty()) {
+            if (!SymbolsExtractor.extractNames(relation.getSamplePercentage(), analysis.getColumnReferences()).isEmpty()) {
                 throw new SemanticException(NON_NUMERIC_SAMPLE_PERCENTAGE, relation.getSamplePercentage(), "Sample percentage cannot contain column references");
             }
 
@@ -891,7 +901,7 @@ class StatementAnalyzer
                 // Original ORDER BY scope "sees" FROM query fields. However, during planning
                 // and when aggregation is present, ORDER BY expressions should only be resolvable against
                 // output scope, group by expressions and aggregation expressions.
-                computeAndAssignOrderByScopeWithAggregation(node.getOrderBy().get(), outputScope, aggregations, groupByExpressions, analysis.getGroupingOperations(node));
+                computeAndAssignOrderByScopeWithAggregation(node.getOrderBy().get(), sourceScope, outputScope, aggregations, groupByExpressions, analysis.getGroupingOperations(node));
             }
 
             return outputScope;
@@ -926,6 +936,7 @@ class StatementAnalyzer
             expressions.addAll(orderByExpressions);
             node.getHaving().ifPresent(expressions::add);
 
+            analyzeGroupingOperations(node, expressions, emptyList());
             analyzeAggregations(node, sourceScope, Optional.empty(), groupByExpressions, expressions, emptyList());
             analysis.setWindowFunctions(node, analyzeWindowFunctions(node, expressions));
 
@@ -951,7 +962,7 @@ class StatementAnalyzer
                 int outputFieldSize = outputFieldTypes.length;
                 RelationType relationType = relationScope.getRelationType();
                 int descFieldSize = relationType.getVisibleFields().size();
-                String setOperationName = node.getClass().getSimpleName();
+                String setOperationName = node.getClass().getSimpleName().toUpperCase(ENGLISH);
                 if (outputFieldSize != descFieldSize) {
                     throw new SemanticException(MISMATCHED_SET_COLUMN_TYPES,
                             node,
@@ -965,7 +976,7 @@ class StatementAnalyzer
                         throw new SemanticException(TYPE_MISMATCH,
                                 node,
                                 "column %d in %s query has incompatible types: %s, %s",
-                                i, outputFieldTypes[i].getDisplayName(), setOperationName, descFieldType.getDisplayName());
+                                i, setOperationName, outputFieldTypes[i].getDisplayName(), descFieldType.getDisplayName());
                     }
                     outputFieldTypes[i] = commonSuperType.get();
                 }
@@ -1029,7 +1040,7 @@ class StatementAnalyzer
             }
 
             Scope left = process(node.getLeft(), scope);
-            Scope right = process(node.getRight(), isUnnestRelation(node.getRight()) ? Optional.of(left) : scope);
+            Scope right = process(node.getRight(), isLateralRelation(node.getRight()) ? Optional.of(left) : scope);
 
             Scope output = createAndAssignScope(node, scope, left.getRelationType().joinWith(right.getRelationType()));
 
@@ -1085,12 +1096,12 @@ class StatementAnalyzer
             return output;
         }
 
-        private boolean isUnnestRelation(Relation node)
+        private boolean isLateralRelation(Relation node)
         {
             if (node instanceof AliasedRelation) {
-                return isUnnestRelation(((AliasedRelation) node).getRelation());
+                return isLateralRelation(((AliasedRelation) node).getRelation());
             }
-            return node instanceof Unnest;
+            return node instanceof Unnest || node instanceof Lateral;
         }
 
         private void addCoercionForJoinCriteria(Join node, Expression leftExpression, Expression rightExpression)
@@ -1571,7 +1582,7 @@ class StatementAnalyzer
             return orderByScope;
         }
 
-        private Scope computeAndAssignOrderByScopeWithAggregation(OrderBy node, Scope outputScope, List<FunctionCall> aggregations, List<List<Expression>> groupByExpressions, List<GroupingOperation> groupingOperations)
+        private Scope computeAndAssignOrderByScopeWithAggregation(OrderBy node, Scope sourceScope, Scope outputScope, List<FunctionCall> aggregations, List<List<Expression>> groupByExpressions, List<GroupingOperation> groupingOperations)
         {
             // This scope is only used for planning. When aggregation is present then
             // only output fields, groups and aggregation expressions should be visible from ORDER BY expression
@@ -1582,20 +1593,27 @@ class StatementAnalyzer
             orderByAggregationExpressionsBuilder.addAll(aggregations);
             orderByAggregationExpressionsBuilder.addAll(groupingOperations);
 
-            // Don't add aggregate expression that contains references to output column because the names would clash in TranslationMap during planning.
+            // Don't add aggregate complex expressions that contains references to output column because the names would clash in TranslationMap during planning.
             List<Expression> orderByExpressionsReferencingOutputScope = AstUtils.preOrder(node)
                     .filter(Expression.class::isInstance)
                     .map(Expression.class::cast)
                     .filter(expression -> hasReferencesToScope(expression, analysis, outputScope))
                     .collect(toImmutableList());
             List<Expression> orderByAggregationExpressions = orderByAggregationExpressionsBuilder.build().stream()
-                    .filter(expression -> !orderByExpressionsReferencingOutputScope.contains(expression))
+                    .filter(expression -> !orderByExpressionsReferencingOutputScope.contains(expression) || analysis.getColumnReferences().contains(NodeRef.of(expression)))
                     .collect(toImmutableList());
 
             // generate placeholder fields
+            Set<Field> seen = new HashSet<>();
             List<Field> orderByAggregationSourceFields = orderByAggregationExpressions.stream()
-                    .map(analysis::getType)
-                    .map(type -> Field.newUnqualified(Optional.empty(), type))
+                    .map(expression -> {
+                        // generate qualified placeholder field for GROUP BY expressions that are column references
+                        Optional<Field> sourceField = sourceScope.tryResolveField(expression)
+                                .filter(resolvedField -> seen.add(resolvedField.getField()))
+                                .map(ResolvedField::getField);
+                        return sourceField
+                                .orElse(Field.newUnqualified(Optional.empty(), analysis.getType(expression)));
+                    })
                     .collect(toImmutableList());
 
             Scope orderByAggregationScope = Scope.builder()

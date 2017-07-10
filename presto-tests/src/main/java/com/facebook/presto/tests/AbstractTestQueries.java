@@ -92,6 +92,7 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Iterables.transform;
 import static io.airlift.tpch.TpchTable.ORDERS;
 import static java.lang.String.format;
+import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
@@ -587,6 +588,16 @@ public abstract class AbstractTestQueries
                 "SELECT * FROM (SELECT custkey FROM orders ORDER BY orderkey LIMIT 1) CROSS JOIN (VALUES (10, 1), (20, 2), (30, 3))");
 
         assertQuery("SELECT * FROM orders, UNNEST(ARRAY[1])", "SELECT orders.*, 1 FROM orders");
+
+        assertQueryFails(
+                "SELECT * FROM (VALUES array[2, 2]) a(x) LEFT OUTER JOIN UNNEST(x) ON true",
+                "line .*: UNNEST on other than the right side of CROSS JOIN is not supported");
+        assertQueryFails(
+                "SELECT * FROM (VALUES array[2, 2]) a(x) RIGHT OUTER JOIN UNNEST(x) ON true",
+                "line .*: UNNEST on other than the right side of CROSS JOIN is not supported");
+        assertQueryFails(
+                "SELECT * FROM (VALUES array[2, 2]) a(x) FULL OUTER JOIN UNNEST(x) ON true",
+                "line .*: UNNEST on other than the right side of CROSS JOIN is not supported");
     }
 
     @Test
@@ -1105,6 +1116,11 @@ public abstract class AbstractTestQueries
         assertQueryOrdered("select a as foo FROM (values (1,2),(3,2)) t(a,b) GROUP BY GROUPING SETS ((a), (a, b)) HAVING b IS NOT NULL ORDER BY -a", "VALUES 3, 1");
         assertQueryOrdered("select max(a) FROM (values (1,2),(3,2)) t(a,b) ORDER BY max(-a)", "VALUES 3");
         assertQueryFails("SELECT max(a) AS a FROM (values (1,2)) t(a,b) GROUP BY b ORDER BY max(a+b)", ".*Invalid reference to output projection attribute from ORDER BY aggregation");
+        assertQueryOrdered("SELECT -a as a, a as b FROM (VALUES 1, 2) t(a) GROUP BY t.a ORDER BY a", "VALUES (-2, 2), (-1, 1)");
+        assertQueryOrdered("SELECT -a as a, a as b FROM (VALUES 1, 2) t(a) GROUP BY t.a ORDER BY t.a", "VALUES (-1, 1), (-2, 2)");
+        assertQueryOrdered("SELECT -a as a, a as b FROM (VALUES 1, 2) t(a) GROUP BY a ORDER BY t.a", "VALUES (-1, 1), (-2, 2)");
+        assertQueryOrdered("SELECT -a as a, a as b FROM (VALUES 1, 2) t(a) GROUP BY a ORDER BY t.a+2*a", "VALUES (-2, 2), (-1, 1)");
+        assertQueryOrdered("SELECT -a as a, a as b FROM (VALUES 1, 2) t(a) GROUP BY t.a ORDER BY t.a+2*a", "VALUES (-2, 2), (-1, 1)");
 
         // lambdas
         assertQueryOrdered("SELECT x as y FROM (values (1,2), (2,3)) t(x, y) GROUP BY x ORDER BY apply(x, x -> -x) + 2*x", "VALUES 1, 2");
@@ -1157,6 +1173,9 @@ public abstract class AbstractTestQueries
         assertQueryOrdered(session, "SELECT -a AS a FROM (VALUES 1, 2) t(a) ORDER BY first_value(a+t.a*2) OVER (ORDER BY a ROWS 0 PRECEDING)", "VALUES -1, -2");
 
         assertQueryFails(session, "SELECT a as a, a* -1 AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY a", ".*'a' in ORDER BY is ambiguous");
+
+        // grouping
+        assertQueryOrdered(session, "SELECT grouping(a) as c FROM (VALUES (-1, -1), (1, 1)) AS t (a, b) GROUP BY GROUPING SETS (a, b) ORDER BY c ASC", "VALUES 0, 0, 1, 1");
     }
 
     @Test
@@ -1169,6 +1188,20 @@ public abstract class AbstractTestQueries
                         "GROUP BY x\n" +
                         "ORDER BY sum(cast(t.x AS double))",
                 "VALUES ('1.0', 1.0)");
+
+        Session legacyOrderBy = Session.builder(getSession())
+                .setSystemProperty(LEGACY_ORDER_BY, "true")
+                .build();
+
+        for (Session session : asList(getSession(), legacyOrderBy)) {
+            for (String groupBy : asList("x.letter", "letter")) {
+                for (String orderBy : asList("x.letter", "letter")) {
+                    for (String output : asList("", ", letter", ", letter as y")) {
+                        assertQueryOrdered(session, format("select count(*) %s from (select substr(name,1,1) letter from nation) x group by %s order by %s", output, groupBy, orderBy));
+                    }
+                }
+            }
+        }
     }
 
     @Test
@@ -1845,19 +1878,19 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery(
-            "SELECT a, b as t, sum(c), grouping(a, b) + grouping(a) " +
-                    "FROM (VALUES ('h', 'j', 11), ('k', 'l', 7)) AS t (a, b, c) " +
-                    "GROUP BY GROUPING SETS ( (a), (b)) " +
-                    "ORDER BY grouping(b) ASC",
-            "VALUES (NULL, 'j', 11, 3), (NULL, 'l', 7, 3), ('h', NULL, 11, 1), ('k', NULL, 7, 1)");
+                "SELECT a, b as t, sum(c), grouping(a, b) + grouping(a) " +
+                        "FROM (VALUES ('h', 'j', 11), ('k', 'l', 7)) AS t (a, b, c) " +
+                        "GROUP BY GROUPING SETS ( (a), (b)) " +
+                        "ORDER BY grouping(b) ASC",
+                "VALUES (NULL, 'j', 11, 3), (NULL, 'l', 7, 3), ('h', NULL, 11, 1), ('k', NULL, 7, 1)");
 
         assertQuery(
-            "SELECT a, sum(b), grouping(a) FROM (VALUES ('h', 11, 0), ('k', 7, 0)) AS t (a, b, c) GROUP BY GROUPING SETS (a)",
-            "VALUES ('h', 11, 0), ('k', 7, 0)");
+                "SELECT a, sum(b), grouping(a) FROM (VALUES ('h', 11, 0), ('k', 7, 0)) AS t (a, b, c) GROUP BY GROUPING SETS (a)",
+                "VALUES ('h', 11, 0), ('k', 7, 0)");
 
         assertQuery(
-            "SELECT a, b, sum(c), grouping(a, b) FROM (VALUES ('h', 'j', 11), ('k', 'l', 7) ) AS t (a, b, c) GROUP BY GROUPING SETS ( (a), (b)) HAVING grouping(a, b) > 1 ",
-            "VALUES (NULL, 'j', 11, 2), (NULL, 'l', 7, 2)");
+                "SELECT a, b, sum(c), grouping(a, b) FROM (VALUES ('h', 'j', 11), ('k', 'l', 7) ) AS t (a, b, c) GROUP BY GROUPING SETS ( (a), (b)) HAVING grouping(a, b) > 1 ",
+                "VALUES (NULL, 'j', 11, 2), (NULL, 'l', 7, 2)");
 
         assertQuery("SELECT a, grouping(a) * 1.0 FROM (VALUES (1) ) AS t (a) GROUP BY a",
                 "VALUES (1, 0.0)");
@@ -1866,7 +1899,7 @@ public abstract class AbstractTestQueries
                 "VALUES (1, 0, 0)");
 
         assertQuery("SELECT grouping(a) FROM (VALUES ('h', 'j', 11), ('k', 'l', 7)) AS t (a, b, c) GROUP BY GROUPING SETS (a,c), c*2",
-                    "VALUES (0), (1), (0), (1)");
+                "VALUES (0), (1), (0), (1)");
     }
 
     @Test
@@ -1901,23 +1934,23 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery(
-            "SELECT orderkey, custkey, sum(totalprice), grouping(orderkey)+grouping(custkey) as g, " +
-                "       rank() OVER (PARTITION BY grouping(orderkey)+grouping(custkey), " +
-                "       CASE WHEN grouping(orderkey) = 0 THEN custkey END ORDER BY orderkey ASC) as r " +
-                "FROM orders " +
-                "GROUP BY ROLLUP (orderkey, custkey) " +
-                "ORDER BY orderkey, custkey " +
-                "LIMIT 10",
-            "VALUES (1, 370, 172799.49, 0, 1), " +
-                "       (1, NULL, 172799.49, 1, 1), " +
-                "       (2, 781, 38426.09, 0, 1), " +
-                "       (2, NULL, 38426.09, 1, 2), " +
-                "       (3, 1234, 205654.30, 0, 1), " +
-                "       (3, NULL, 205654.30, 1, 3), " +
-                "       (4, 1369, 56000.91, 0, 1), " +
-                "       (4, NULL, 56000.91, 1, 4), " +
-                "       (5, 445, 105367.67, 0, 1), " +
-                "       (5, NULL, 105367.67, 1, 5)");
+                "SELECT orderkey, custkey, sum(totalprice), grouping(orderkey)+grouping(custkey) as g, " +
+                        "       rank() OVER (PARTITION BY grouping(orderkey)+grouping(custkey), " +
+                        "       CASE WHEN grouping(orderkey) = 0 THEN custkey END ORDER BY orderkey ASC) as r " +
+                        "FROM orders " +
+                        "GROUP BY ROLLUP (orderkey, custkey) " +
+                        "ORDER BY orderkey, custkey " +
+                        "LIMIT 10",
+                "VALUES (1, 370, 172799.49, 0, 1), " +
+                        "       (1, NULL, 172799.49, 1, 1), " +
+                        "       (2, 781, 38426.09, 0, 1), " +
+                        "       (2, NULL, 38426.09, 1, 2), " +
+                        "       (3, 1234, 205654.30, 0, 1), " +
+                        "       (3, NULL, 205654.30, 1, 3), " +
+                        "       (4, 1369, 56000.91, 0, 1), " +
+                        "       (4, NULL, 56000.91, 1, 4), " +
+                        "       (5, 445, 105367.67, 0, 1), " +
+                        "       (5, NULL, 105367.67, 1, 5)");
     }
 
     @Test
@@ -1932,54 +1965,54 @@ public abstract class AbstractTestQueries
 
         // Inner query has a single GROUP BY and outer query has GROUPING SETS
         assertQuery(
-            "SELECT orderkey, custkey, sum(agg_price) as outer_sum, grouping(orderkey, custkey), g " +
-                "FROM " +
-                "    (SELECT orderkey, custkey, sum(totalprice) as agg_price, grouping(custkey, orderkey) as g " +
-                "        FROM orders " +
-                "        GROUP BY orderkey, custkey " +
-                "        ORDER BY agg_price ASC " +
-                "        LIMIT 5) as t " +
-                "GROUP BY GROUPING SETS ((orderkey, custkey), g) " +
-                "ORDER BY outer_sum",
-            "VALUES (35271, 334, 874.89, 0, NULL), " +
-                "       (28647, 1351, 924.33, 0, NULL), " +
-                "       (58145, 862, 929.03, 0, NULL), " +
-                "       (8354, 634, 974.04, 0, NULL), " +
-                "       (37415, 301, 986.63, 0, NULL), " +
-                "       (NULL, NULL, 4688.92, 3, 0)");
+                "SELECT orderkey, custkey, sum(agg_price) as outer_sum, grouping(orderkey, custkey), g " +
+                        "FROM " +
+                        "    (SELECT orderkey, custkey, sum(totalprice) as agg_price, grouping(custkey, orderkey) as g " +
+                        "        FROM orders " +
+                        "        GROUP BY orderkey, custkey " +
+                        "        ORDER BY agg_price ASC " +
+                        "        LIMIT 5) as t " +
+                        "GROUP BY GROUPING SETS ((orderkey, custkey), g) " +
+                        "ORDER BY outer_sum",
+                "VALUES (35271, 334, 874.89, 0, NULL), " +
+                        "       (28647, 1351, 924.33, 0, NULL), " +
+                        "       (58145, 862, 929.03, 0, NULL), " +
+                        "       (8354, 634, 974.04, 0, NULL), " +
+                        "       (37415, 301, 986.63, 0, NULL), " +
+                        "       (NULL, NULL, 4688.92, 3, 0)");
 
         // Inner query has GROUPING SETS and outer query has GROUP BY
         assertQuery(
-            "SELECT orderkey, custkey, g, sum(agg_price) as outer_sum, grouping(orderkey, custkey) " +
-                "FROM " +
-                "    (SELECT orderkey, custkey, sum(totalprice) as agg_price, grouping(custkey, orderkey) as g " +
-                "     FROM orders " +
-                "     GROUP BY GROUPING SETS ((custkey), (orderkey)) " +
-                "     ORDER BY agg_price ASC " +
-                "     LIMIT 5) as t " +
-                "GROUP BY orderkey, custkey, g",
-            "VALUES (28647, NULL, 2, 924.33, 0), " +
-                "       (8354, NULL, 2, 974.04, 0), " +
-                "       (37415, NULL, 2, 986.63, 0), " +
-                "       (58145, NULL, 2, 929.03, 0), " +
-                "       (35271, NULL, 2, 874.89, 0)");
+                "SELECT orderkey, custkey, g, sum(agg_price) as outer_sum, grouping(orderkey, custkey) " +
+                        "FROM " +
+                        "    (SELECT orderkey, custkey, sum(totalprice) as agg_price, grouping(custkey, orderkey) as g " +
+                        "     FROM orders " +
+                        "     GROUP BY GROUPING SETS ((custkey), (orderkey)) " +
+                        "     ORDER BY agg_price ASC " +
+                        "     LIMIT 5) as t " +
+                        "GROUP BY orderkey, custkey, g",
+                "VALUES (28647, NULL, 2, 924.33, 0), " +
+                        "       (8354, NULL, 2, 974.04, 0), " +
+                        "       (37415, NULL, 2, 986.63, 0), " +
+                        "       (58145, NULL, 2, 929.03, 0), " +
+                        "       (35271, NULL, 2, 874.89, 0)");
 
         // Inner query has GROUPING SETS but no grouping and outer query has a simple GROUP BY
         assertQuery(
-            "SELECT orderkey, custkey, sum(agg_price) as outer_sum, grouping(orderkey, custkey) " +
-                "FROM " +
-                "   (SELECT orderkey, custkey, sum(totalprice) as agg_price " +
-                "    FROM orders " +
-                "    GROUP BY GROUPING SETS ((custkey), (orderkey)) " +
-                "    ORDER BY agg_price ASC NULLS FIRST) as t " +
-                "GROUP BY orderkey, custkey " +
-                "ORDER BY outer_sum ASC NULLS FIRST " +
-                "LIMIT 5",
-            "VALUES (35271, NULL, 874.89, 0), " +
-                "       (28647, NULL, 924.33, 0), " +
-                "       (58145, NULL, 929.03, 0), " +
-                "       (8354,  NULL, 974.04, 0), " +
-                "       (37415, NULL, 986.63, 0)");
+                "SELECT orderkey, custkey, sum(agg_price) as outer_sum, grouping(orderkey, custkey) " +
+                        "FROM " +
+                        "   (SELECT orderkey, custkey, sum(totalprice) as agg_price " +
+                        "    FROM orders " +
+                        "    GROUP BY GROUPING SETS ((custkey), (orderkey)) " +
+                        "    ORDER BY agg_price ASC NULLS FIRST) as t " +
+                        "GROUP BY orderkey, custkey " +
+                        "ORDER BY outer_sum ASC NULLS FIRST " +
+                        "LIMIT 5",
+                "VALUES (35271, NULL, 874.89, 0), " +
+                        "       (28647, NULL, 924.33, 0), " +
+                        "       (58145, NULL, 929.03, 0), " +
+                        "       (8354,  NULL, 974.04, 0), " +
+                        "       (37415, NULL, 986.63, 0)");
     }
 
     @Test
@@ -3658,11 +3691,11 @@ public abstract class AbstractTestQueries
     }
 
     @Test
-    public void testAggregationOverRigthJoinOverSingleStreamProbe()
+    public void testAggregationOverRightJoinOverSingleStreamProbe()
     {
         // this should return one row since value is always 'value'
         // this test verifies that the two streams produced by the right join
-        // are handled gathered for the aggergation operator
+        // are handled gathered for the aggregation operator
         assertQueryOrdered("" +
                         "SELECT\n" +
                         "  value\n" +
@@ -3744,6 +3777,29 @@ public abstract class AbstractTestQueries
     public void testOrderByOrdinalWithWildcard()
     {
         assertQueryOrdered("SELECT * FROM orders ORDER BY 1");
+    }
+
+    @Test
+    public void testOrderByWithSimilarExpressions()
+    {
+        assertQuery(
+                "WITH t AS (SELECT 1 x, 2 y) SELECT x, y FROM t ORDER BY x, y",
+                "SELECT 1, 2");
+        assertQuery(
+                "WITH t AS (SELECT 1 x, 2 y) SELECT x, y FROM t ORDER BY x, y LIMIT 1",
+                "SELECT 1, 2");
+        assertQuery(
+                "WITH t AS (SELECT 1 x, 1 y) SELECT x, y FROM t ORDER BY x, y LIMIT 1",
+                "SELECT 1, 1");
+        assertQuery(
+                "WITH t AS (SELECT orderkey x, orderkey y FROM orders) SELECT x, y FROM t ORDER BY x, y LIMIT 1",
+                "SELECT 1, 1");
+        assertQuery(
+                "WITH t AS (SELECT orderkey x, orderkey y FROM orders) SELECT x, y FROM t ORDER BY x, y DESC LIMIT 1",
+                "SELECT 1, 1");
+        assertQuery(
+                "WITH t AS (SELECT orderkey x, totalprice y, orderkey z FROM orders) SELECT x, y, z FROM t ORDER BY x, y, z LIMIT 1",
+                "SELECT 1, 172799.49, 1");
     }
 
     @Test
@@ -6017,11 +6073,11 @@ public abstract class AbstractTestQueries
     public void testUnionWithTopN()
     {
         assertQuery("SELECT * FROM (" +
-                "   SELECT regionkey FROM nation " +
-                "   UNION ALL " +
-                "   SELECT nationkey FROM nation" +
-                ") t(a) " +
-                "ORDER BY a LIMIT 1",
+                        "   SELECT regionkey FROM nation " +
+                        "   UNION ALL " +
+                        "   SELECT nationkey FROM nation" +
+                        ") t(a) " +
+                        "ORDER BY a LIMIT 1",
                 "SELECT 0");
     }
 
@@ -6998,7 +7054,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testCorrelatedScalarSubqueries()
     {
-        String errorMsg = "Unsupported correlated subquery type";
+        String errorMsg = "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode";
 
         assertQueryFails("SELECT (SELECT l.orderkey) FROM lineitem l", errorMsg);
         assertQueryFails("SELECT (SELECT 2 * l.orderkey) FROM lineitem l", errorMsg);
@@ -7021,11 +7077,11 @@ public abstract class AbstractTestQueries
         assertQueryFails("SELECT * FROM lineitem l WHERE 1 = (SELECT (SELECT 2 * l.orderkey))", errorMsg);
 
         // explicit limit in subquery
-        assertQueryFails("SELECT (SELECT count(*) FROM (SELECT * FROM (values (7,1)) t(orderkey, value) WHERE orderkey = corr_key LIMIT 1)) FROM (values 7) t(corr_key)", errorMsg);
+        assertQueryFails("SELECT (SELECT count(*) FROM (VALUES (7,1)) t(orderkey, value) WHERE orderkey = corr_key LIMIT 1) FROM (values 7) t(corr_key)", errorMsg);
     }
 
     @Test
-    public void testCorrelatedScalarSubqueriesWithCountScalarAggregationAndEqualityPredicatesInWhere()
+    public void testCorrelatedScalarSubqueriesWithScalarAggregationAndEqualityPredicatesInWhere()
     {
         assertQuery("SELECT (SELECT count(*) WHERE o.orderkey = 1) FROM orders o");
         assertQuery("SELECT count(*) FROM orders o WHERE 1 = (SELECT count(*) WHERE o.orderkey = 0)");
@@ -7035,8 +7091,8 @@ public abstract class AbstractTestQueries
                         "(SELECT count(*) FROM region r WHERE n.regionkey = r.regionkey) > 1");
         assertQueryFails(
                 "SELECT count(*) FROM nation n WHERE " +
-                        "(SELECT count(*) FROM (SELECT count(*) FROM region r WHERE n.regionkey = r.regionkey)) > 1",
-                "Unsupported correlated subquery type");
+                        "(SELECT avg(a) FROM (SELECT count(*) FROM region r WHERE n.regionkey = r.regionkey) t(a)) > 1",
+                "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode");
 
         // with duplicated rows
         assertQuery(
@@ -7153,15 +7209,15 @@ public abstract class AbstractTestQueries
 
         //count in subquery
         assertQuery("SELECT * " +
-                "FROM (VALUES (0),( 1), (2), (7)) as v1(c1) " +
-                "WHERE v1.c1 > (SELECT count(c1) from (VALUES (0),( 1), (2)) as v2(c1) WHERE v1.c1 = v2.c1)",
+                        "FROM (VALUES (0),( 1), (2), (7)) as v1(c1) " +
+                        "WHERE v1.c1 > (SELECT count(c1) from (VALUES (0),( 1), (2)) as v2(c1) WHERE v1.c1 = v2.c1)",
                 "VALUES (2), (7)");
     }
 
     @Test
     public void testCorrelatedInPredicateSubqueries()
     {
-        String errorMsg = "Unsupported correlated subquery type";
+        String errorMsg = "Unexpected node: com.facebook.presto.sql.planner.plan.ApplyNode";
 
         assertQuery("SELECT orderkey, clerk IN (SELECT clerk FROM orders s WHERE s.custkey = o.custkey AND s.orderkey < o.orderkey) FROM orders o");
         assertQuery("SELECT orderkey FROM orders o WHERE clerk IN (SELECT clerk FROM orders s WHERE s.custkey = o.custkey AND s.orderkey < o.orderkey)");
@@ -7193,7 +7249,9 @@ public abstract class AbstractTestQueries
         assertQueryFails("SELECT * FROM lineitem l1 JOIN lineitem l2 ON l1.orderkey IN (SELECT l2.orderkey)", errorMsg);
 
         // subrelation
-        assertQueryFails("SELECT * FROM lineitem l WHERE (SELECT * FROM (SELECT 1 IN (SELECT 2 * l.orderkey)))", errorMsg);
+        assertQueryFails(
+                "SELECT * FROM lineitem l WHERE (SELECT * FROM (SELECT 1 IN (SELECT 2 * l.orderkey)))",
+                "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode");
 
         // two level of nesting
         assertQueryFails("SELECT * FROM lineitem l WHERE true IN (SELECT 1 IN (SELECT 2 * l.orderkey))", errorMsg);
@@ -7239,11 +7297,11 @@ public abstract class AbstractTestQueries
         assertQueryFails(
                 "SELECT count(*) FROM orders o " +
                         "WHERE EXISTS (SELECT avg(l.orderkey) FROM lineitem l WHERE o.orderkey = l.orderkey GROUP BY l.linenumber)",
-                "Unsupported correlated subquery type");
+                "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode");
         assertQueryFails(
                 "SELECT count(*) FROM orders o " +
                         "WHERE EXISTS (SELECT count(*) FROM lineitem l WHERE o.orderkey = l.orderkey HAVING count(*) > 3)",
-                "Unsupported correlated subquery type");
+                "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode");
 
         // with duplicated rows
         assertQuery(
@@ -7345,7 +7403,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testUnsupportedCorrelatedExistsSubqueries()
     {
-        String errorMsg = "Unsupported correlated subquery type";
+        String errorMsg = "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode";
 
         assertQueryFails("SELECT EXISTS(SELECT 1 WHERE l.orderkey > 0 OR l.orderkey != 3) FROM lineitem l", errorMsg);
         assertQueryFails("SELECT count(*) FROM lineitem l WHERE EXISTS(SELECT 1 WHERE l.orderkey > 0 OR l.orderkey != 3)", errorMsg);
@@ -8764,7 +8822,7 @@ public abstract class AbstractTestQueries
                 "SELECT (SELECT true FROM (SELECT 1) t(a) WHERE a = nationkey) " +
                         "FROM nation " +
                         "WHERE (SELECT true FROM (SELECT 1) t(a) WHERE a = nationkey) OR TRUE",
-                "Unsupported correlated subquery type");
+                "Unexpected node: com.facebook.presto.sql.planner.plan.LateralJoinNode");
     }
 
     @Test
@@ -8827,5 +8885,81 @@ public abstract class AbstractTestQueries
                         "ON v1.col1 = nation.regionkey " +
                         "GROUP BY v1.col1",
                 "VALUES 24");
+    }
+
+    @Test
+    public void testLateralJoin()
+    {
+        assertQuery(
+                "SELECT name FROM nation, LATERAL (SELECT 1 WHERE false)",
+                "SELECT 1 WHERE false");
+
+        assertQuery(
+                "SELECT name FROM nation, LATERAL (SELECT 1)",
+                "SELECT name FROM nation");
+
+        assertQuery(
+                "SELECT name FROM nation, LATERAL (SELECT 1 WHERE name = 'ola')",
+                "SELECT 1 WHERE false");
+
+        assertQuery(
+                "SELECT nationkey, a FROM nation, LATERAL (SELECT max(region.name) FROM region WHERE region.regionkey <= nation.regionkey) t(a) ORDER BY nationkey LIMIT 1",
+                "VALUES (0, 'AFRICA')");
+
+        assertQuery(
+                "SELECT nationkey, a FROM nation, LATERAL (SELECT region.name || '_' FROM region WHERE region.regionkey = nation.regionkey) t(a) ORDER BY nationkey LIMIT 1",
+                "VALUES (0, 'AFRICA_')");
+
+        assertQuery(
+                "SELECT nationkey, a, b, name FROM nation, LATERAL (SELECT nationkey + 2 AS a), LATERAL (SELECT a * -1 AS b) ORDER BY b LIMIT 1",
+                "VALUES (24, 26, -26, 'UNITED STATES')");
+
+        assertQuery(
+                "SELECT * FROM region r, LATERAL (SELECT * FROM nation) n WHERE n.regionkey = r.regionkey",
+                "SELECT * FROM region, nation WHERE nation.regionkey = region.regionkey");
+        assertQuery(
+                "SELECT * FROM region, LATERAL (SELECT * FROM nation WHERE nation.regionkey = region.regionkey)",
+                "SELECT * FROM region, nation WHERE nation.regionkey = region.regionkey");
+
+        assertQuery(
+                "SELECT quantity, extendedprice, avg_price, low, high " +
+                        "FROM lineitem, " +
+                        "LATERAL (SELECT extendedprice / quantity AS avg_price) average_price, " +
+                        "LATERAL (SELECT avg_price * 0.9 AS low) lower_bound, " +
+                        "LATERAL (SELECT avg_price * 1.1 AS high) upper_bound " +
+                        "ORDER BY extendedprice, quantity LIMIT 1",
+                "VALUES (1.0, 904.0, 904.0, 813.6, 994.400)");
+
+        assertQuery(
+                "SELECT y FROM (VALUES array[2, 3]) a(x) CROSS JOIN LATERAL(SELECT x[1]) b(y)",
+                "SELECT 2");
+        assertQuery(
+                "SELECT * FROM (VALUES 2) a(x) CROSS JOIN LATERAL(SELECT x + 1)",
+                "SELECT 2, 3");
+        assertQuery(
+                "SELECT * FROM (VALUES 2) a(x) CROSS JOIN LATERAL(SELECT x)",
+                "SELECT 2, 2");
+        assertQuery(
+                "SELECT * FROM (VALUES 2) a(x) CROSS JOIN LATERAL(SELECT x, x + 1)",
+                "SELECT 2, 2, 3");
+
+        assertQueryFails(
+                "SELECT * FROM (VALUES array[2, 2]) a(x) LEFT OUTER JOIN LATERAL(VALUES x) ON true",
+                "line .*: LATERAL on other than the right side of CROSS JOIN is not supported");
+        assertQueryFails(
+                "SELECT * FROM (VALUES array[2, 2]) a(x) RIGHT OUTER JOIN LATERAL(VALUES x) ON true",
+                "line .*: LATERAL on other than the right side of CROSS JOIN is not supported");
+        assertQueryFails(
+                "SELECT * FROM (VALUES array[2, 2]) a(x) FULL OUTER JOIN LATERAL(VALUES x) ON true",
+                "line .*: LATERAL on other than the right side of CROSS JOIN is not supported");
+    }
+
+    @Test
+    public void testPruningCountAggregationOverScalar()
+    {
+        assertQuery("SELECT COUNT(*) FROM (SELECT SUM(orderkey) FROM orders)");
+        assertQuery(
+                "SELECT COUNT(*) FROM (SELECT SUM(orderkey) FROM orders group by custkey)",
+                "VALUES 1000");
     }
 }

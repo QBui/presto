@@ -26,7 +26,6 @@ import com.facebook.presto.spi.predicate.NullableValue;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.planner.DependencyExtractor;
 import com.facebook.presto.sql.planner.DomainTranslator;
 import com.facebook.presto.sql.planner.ExpressionInterpreter;
 import com.facebook.presto.sql.planner.LookupSymbolResolver;
@@ -35,6 +34,7 @@ import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.SymbolsExtractor;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.Assignments;
@@ -48,6 +48,7 @@ import com.facebook.presto.sql.planner.plan.GroupIdNode;
 import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.MarkDistinctNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
@@ -673,7 +674,7 @@ public class AddExchanges
 
             // If any conjuncts evaluate to FALSE or null, then the whole predicate will never be true and so the partition should be pruned
             for (Expression expression : conjuncts) {
-                if (DependencyExtractor.extractUnique(expression).stream().anyMatch(correlations::contains)) {
+                if (SymbolsExtractor.extractUnique(expression).stream().anyMatch(correlations::contains)) {
                     // expression contains correlated symbol with outer query
                     continue;
                 }
@@ -1222,6 +1223,21 @@ public class AddExchanges
                     subquery.getNode(),
                     node.getSubqueryAssignments(),
                     node.getCorrelation());
+            return new PlanWithProperties(rewritten, deriveProperties(rewritten, ImmutableList.of(input.getProperties(), subquery.getProperties())));
+        }
+
+        @Override
+        public PlanWithProperties visitLateralJoin(LateralJoinNode node, Context context)
+        {
+            PlanWithProperties input = node.getInput().accept(this, context);
+            PlanWithProperties subquery = node.getSubquery().accept(this, context.withCorrelations(node.getCorrelation()));
+
+            LateralJoinNode rewritten = new LateralJoinNode(
+                    node.getId(),
+                    input.getNode(),
+                    subquery.getNode(),
+                    node.getCorrelation(),
+                    node.getType());
             return new PlanWithProperties(rewritten, deriveProperties(rewritten, ImmutableList.of(input.getProperties(), subquery.getProperties())));
         }
 

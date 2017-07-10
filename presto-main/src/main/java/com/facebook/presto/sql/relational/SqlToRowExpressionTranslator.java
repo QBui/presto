@@ -19,6 +19,8 @@ import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.spi.type.DecimalParseResult;
 import com.facebook.presto.spi.type.Decimals;
+import com.facebook.presto.spi.type.RowType;
+import com.facebook.presto.spi.type.RowType.RowField;
 import com.facebook.presto.spi.type.TimeZoneKey;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -68,8 +70,6 @@ import com.facebook.presto.sql.tree.TimeLiteral;
 import com.facebook.presto.sql.tree.TimestampLiteral;
 import com.facebook.presto.sql.tree.TryExpression;
 import com.facebook.presto.sql.tree.WhenClause;
-import com.facebook.presto.type.RowType;
-import com.facebook.presto.type.RowType.RowField;
 import com.facebook.presto.type.UnknownType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -353,14 +353,20 @@ public final class SqlToRowExpressionTranslator
         @Override
         protected RowExpression visitBindExpression(BindExpression node, Void context)
         {
-            RowExpression value = process(node.getValue(), context);
+            ImmutableList.Builder<Type> valueTypesBuilder = ImmutableList.builder();
+            ImmutableList.Builder<RowExpression> argumentsBuilder = ImmutableList.builder();
+            for (Expression value : node.getValues()) {
+                RowExpression valueRowExpression = process(value, context);
+                valueTypesBuilder.add(valueRowExpression.getType());
+                argumentsBuilder.add(valueRowExpression);
+            }
             RowExpression function = process(node.getFunction(), context);
+            argumentsBuilder.add(function);
 
             return call(
-                    bindSignature(getType(node), value.getType(), function.getType()),
+                    bindSignature(getType(node), valueTypesBuilder.build(), function.getType()),
                     getType(node),
-                    value,
-                    function);
+                    argumentsBuilder.build());
         }
 
         @Override

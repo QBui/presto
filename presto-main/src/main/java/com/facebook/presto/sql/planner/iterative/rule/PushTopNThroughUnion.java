@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
@@ -36,6 +37,14 @@ import static com.google.common.collect.Sets.intersection;
 public class PushTopNThroughUnion
         implements Rule
 {
+    private static final Pattern PATTERN = Pattern.typeOf(TopNNode.class);
+
+    @Override
+    public Pattern getPattern()
+    {
+        return PATTERN;
+    }
+
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {

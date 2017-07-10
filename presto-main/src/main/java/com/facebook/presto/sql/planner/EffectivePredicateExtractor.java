@@ -224,12 +224,9 @@ public class EffectivePredicateExtractor
         Expression leftPredicate = node.getLeft().accept(this, context);
         Expression rightPredicate = node.getRight().accept(this, context);
 
-        List<Expression> joinConjuncts = new ArrayList<>();
-        for (JoinNode.EquiJoinClause clause : node.getCriteria()) {
-            joinConjuncts.add(new ComparisonExpression(ComparisonExpressionType.EQUAL,
-                    clause.getLeft().toSymbolReference(),
-                    clause.getRight().toSymbolReference()));
-        }
+        List<Expression> joinConjuncts = node.getCriteria().stream()
+                .map(JoinNode.EquiJoinClause::toExpression)
+                .collect(toImmutableList());
 
         switch (node.getType()) {
             case INNER:
@@ -266,7 +263,7 @@ public class EffectivePredicateExtractor
         // Conjuncts without any symbol dependencies cannot be applied to the effective predicate (e.g. FALSE literal)
         return conjuncts.stream()
                 .map(expression -> pullExpressionThroughSymbols(expression, outputSymbols))
-                .map(expression -> DependencyExtractor.extractAll(expression).isEmpty() ? TRUE_LITERAL : expression)
+                .map(expression -> SymbolsExtractor.extractAll(expression).isEmpty() ? TRUE_LITERAL : expression)
                 .map(expressionOrNullSymbols(nullSymbolScopes))
                 .collect(toImmutableList());
     }

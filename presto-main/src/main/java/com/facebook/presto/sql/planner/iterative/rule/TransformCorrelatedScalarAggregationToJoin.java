@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.SymbolAllocator;
@@ -21,21 +22,29 @@ import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.optimizations.ScalarAggregationToJoinRewriter;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
-import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
+import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 
 import java.util.Optional;
 
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
-import static com.facebook.presto.sql.planner.optimizations.Predicates.isInstanceOfAny;
-import static com.facebook.presto.sql.planner.optimizations.ScalarQueryUtil.isScalar;
+import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isScalar;
+import static com.facebook.presto.util.MorePredicates.isInstanceOfAny;
 import static java.util.Objects.requireNonNull;
 
 public class TransformCorrelatedScalarAggregationToJoin
         implements Rule
 {
+    private static final Pattern PATTERN = Pattern.typeOf(LateralJoinNode.class);
+
+    @Override
+    public Pattern getPattern()
+    {
+        return PATTERN;
+    }
+
     private final FunctionRegistry functionRegistry;
 
     public TransformCorrelatedScalarAggregationToJoin(FunctionRegistry functionRegistry)
@@ -46,14 +55,14 @@ public class TransformCorrelatedScalarAggregationToJoin
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
-        if (!(node instanceof ApplyNode)) {
+        if (!(node instanceof LateralJoinNode)) {
             return Optional.empty();
         }
 
-        ApplyNode applyNode = (ApplyNode) node;
-        PlanNode subquery = lookup.resolve(applyNode.getSubquery());
+        LateralJoinNode lateralJoinNode = (LateralJoinNode) node;
+        PlanNode subquery = lookup.resolve(lateralJoinNode.getSubquery());
 
-        if (applyNode.getCorrelation().isEmpty() || !(isScalar(subquery, lookup) && applyNode.isSubqueryResolved())) {
+        if (lateralJoinNode.getCorrelation().isEmpty() || !(isScalar(subquery, lookup))) {
             return Optional.empty();
         }
 
@@ -64,9 +73,9 @@ public class TransformCorrelatedScalarAggregationToJoin
 
         ScalarAggregationToJoinRewriter rewriter = new ScalarAggregationToJoinRewriter(functionRegistry, symbolAllocator, idAllocator, lookup);
 
-        PlanNode rewrittenNode = rewriter.rewriteScalarAggregation(applyNode, aggregation.get());
+        PlanNode rewrittenNode = rewriter.rewriteScalarAggregation(lateralJoinNode, aggregation.get());
 
-        if (rewrittenNode instanceof ApplyNode) {
+        if (rewrittenNode instanceof LateralJoinNode) {
             return Optional.empty();
         }
 

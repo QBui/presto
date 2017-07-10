@@ -145,6 +145,11 @@ public class RuleAssert
         SymbolAllocator symbolAllocator = new SymbolAllocator(symbols);
         Memo memo = new Memo(idAllocator, plan);
         Lookup lookup = Lookup.from(memo::resolve);
+
+        if (!rule.getPattern().matches(plan)) {
+            return new RuleApplication(lookup, symbolAllocator.getTypes(), Optional.empty());
+        }
+
         Optional<PlanNode> result = inTransaction(session -> rule.apply(memo.getNode(memo.getRootGroup()), lookup, idAllocator, symbolAllocator, session));
 
         return new RuleApplication(lookup, symbolAllocator.getTypes(), result);

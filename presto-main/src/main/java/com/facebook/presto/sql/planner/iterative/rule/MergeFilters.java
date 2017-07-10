@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.iterative.Lookup;
@@ -28,13 +29,17 @@ import static com.facebook.presto.sql.ExpressionUtils.combineConjuncts;
 public class MergeFilters
     implements Rule
 {
+    private static final Pattern PATTERN = Pattern.typeOf(FilterNode.class);
+
+    @Override
+    public Pattern getPattern()
+    {
+        return PATTERN;
+    }
+
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
-        if (!(node instanceof FilterNode)) {
-            return Optional.empty();
-        }
-
         FilterNode parent = (FilterNode) node;
 
         PlanNode source = lookup.resolve(parent.getSource());

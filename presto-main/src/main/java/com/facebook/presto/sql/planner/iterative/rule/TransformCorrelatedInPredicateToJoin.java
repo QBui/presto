@@ -14,12 +14,13 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.metadata.FunctionKind;
 import com.facebook.presto.metadata.Signature;
-import com.facebook.presto.sql.planner.DependencyExtractor;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.SymbolsExtractor;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.optimizations.TransformCorrelatedScalarAggregationToJoin;
@@ -94,6 +95,14 @@ import static java.util.Objects.requireNonNull;
 public class TransformCorrelatedInPredicateToJoin
         implements Rule
 {
+    private static final Pattern PATTERN = Pattern.typeOf(ApplyNode.class);
+
+    @Override
+    public Pattern getPattern()
+    {
+        return PATTERN;
+    }
+
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
@@ -170,7 +179,7 @@ public class TransformCorrelatedInPredicateToJoin
                 idAllocator.getNextId(),
                 decorrelatedBuildSource,
                 Assignments.builder()
-                        .putAll(Assignments.identity(decorrelatedBuildSource.getOutputSymbols()))
+                        .putIdentities(decorrelatedBuildSource.getOutputSymbols())
                         .put(buildSideKnownNonNull, bigint(0))
                         .build()
         );
@@ -227,7 +236,7 @@ public class TransformCorrelatedInPredicateToJoin
                 idAllocator.getNextId(),
                 aggregation,
                 Assignments.builder()
-                        .putAll(Assignments.identity(apply.getInput().getOutputSymbols()))
+                        .putIdentities(apply.getInput().getOutputSymbols())
                         .put(inPredicateOutputSymbol, inPredicateEquivalent)
                         .build()
         );
@@ -390,7 +399,7 @@ public class TransformCorrelatedInPredicateToJoin
 
         private boolean isCorrelatedShallowly(PlanNode node)
         {
-            return DependencyExtractor.extractUniqueNonRecursive(node).stream().anyMatch(correlation::contains);
+            return SymbolsExtractor.extractUniqueNonRecursive(node).stream().anyMatch(correlation::contains);
         }
     }
 

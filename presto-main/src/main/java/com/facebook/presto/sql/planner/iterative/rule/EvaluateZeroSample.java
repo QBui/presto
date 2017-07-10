@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.iterative.Lookup;
@@ -31,13 +32,17 @@ import java.util.Optional;
 public class EvaluateZeroSample
     implements Rule
 {
+    private static final Pattern PATTERN = Pattern.typeOf(SampleNode.class);
+
+    @Override
+    public Pattern getPattern()
+    {
+        return PATTERN;
+    }
+
     @Override
     public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
-        if (!(node instanceof SampleNode)) {
-            return Optional.empty();
-        }
-
         SampleNode sample = (SampleNode) node;
 
         if (sample.getSampleRatio() != 0) {
