@@ -34,6 +34,7 @@ import parquet.hadoop.metadata.BlockMetaData;
 import parquet.hadoop.metadata.ColumnChunkMetaData;
 import parquet.hadoop.metadata.ColumnPath;
 import parquet.io.PrimitiveColumnIO;
+import parquet.schema.GroupType;
 import parquet.schema.MessageType;
 
 import java.io.Closeable;
@@ -151,21 +152,21 @@ public class ParquetReader
         return true;
     }
 
-    public Block readArray(Type type, List<String> path)
+    public Block readArray(Type type, parquet.schema.Type field, List<String> path)
             throws IOException
     {
-        return readArray(type, path, new IntArrayList());
+        return readArray(type, field.asGroupType().getType(0).asGroupType(), path, new IntArrayList());
     }
 
-    private Block readArray(Type type, List<String> path, IntList elementOffsets)
+    private Block readArray(Type type, GroupType field, List<String> path, IntList elementOffsets)
             throws IOException
     {
         List<Type> parameters = type.getTypeParameters();
         checkArgument(parameters.size() == 1, "Arrays must have a single type parameter, found %d", parameters.size());
-        path.add(ARRAY_TYPE_NAME);
+        path.add(field.getName());
         Type elementType = parameters.get(0);
-        Block block = readBlock(ARRAY_ELEMENT_NAME, elementType, path, elementOffsets);
-        path.remove(ARRAY_TYPE_NAME);
+        Block block = readBlock(elementType, field.getType(0), path, elementOffsets);
+        path.remove(field.getName());
 
         if (elementOffsets.isEmpty()) {
             for (int i = 0; i < batchSize; i++) {
@@ -197,8 +198,8 @@ public class ParquetReader
         IntList keyOffsets = new IntArrayList();
         IntList valueOffsets = new IntArrayList();
         path.add(MAP_TYPE_NAME);
-        blocks[0] = readBlock(MAP_KEY_NAME, parameters.get(0), path, keyOffsets);
-        blocks[1] = readBlock(MAP_VALUE_NAME, parameters.get(1), path, valueOffsets);
+        blocks[0] = readBlock(parameters.get(0), null, path, keyOffsets);
+        blocks[1] = readBlock(parameters.get(1), null, path, valueOffsets);
         path.remove(MAP_TYPE_NAME);
 
         if (blocks[0].getPositionCount() == 0) {
@@ -216,13 +217,13 @@ public class ParquetReader
         return ((MapType) type).createBlockFromKeyValue(new boolean[batchSize], offsets, blocks[0], blocks[1]);
     }
 
-    public Block readStruct(Type type, List<String> path)
+    public Block readStruct(Type type, GroupType field, List<String> path)
             throws IOException
     {
-        return readStruct(type, path, new IntArrayList());
+        return readStruct(type, field, path, new IntArrayList());
     }
 
-    private Block readStruct(Type type, List<String> path, IntList elementOffsets)
+    private Block readStruct(Type type, GroupType field, List<String> path, IntList elementOffsets)
             throws IOException
     {
         List<TypeSignatureParameter> parameters = type.getTypeSignature().getParameters();
@@ -231,7 +232,7 @@ public class ParquetReader
             NamedTypeSignature namedTypeSignature = parameters.get(i).getNamedTypeSignature();
             Type fieldType = typeManager.getType(namedTypeSignature.getTypeSignature());
             String name = namedTypeSignature.getName();
-            blocks[i] = readBlock(name, fieldType, path, new IntArrayList());
+            blocks[i] = readBlock(fieldType, field.getType(name), path, new IntArrayList());
         }
 
         InterleavedBlock interleavedBlock = new InterleavedBlock(blocks);
@@ -296,30 +297,30 @@ public class ParquetReader
         }
     }
 
-    private Block readBlock(String name, Type type, List<String> path, IntList offsets)
+    private Block readBlock(Type type, parquet.schema.Type field, List<String> path, IntList offsets)
             throws IOException
     {
-        path.add(name);
+        path.add(field.getName());
         Optional<RichColumnDescriptor> descriptor = getDescriptor(fileSchema, requestedSchema, path);
         if (!descriptor.isPresent()) {
-            path.remove(name);
+            path.remove(field.getName());
             return RunLengthEncodedBlock.create(type, null, batchSize);
         }
 
         Block block;
         if (ROW.equals(type.getTypeSignature().getBase())) {
-            block = readStruct(type, path, offsets);
+            block = readStruct(type, field.asGroupType(), path, offsets);
         }
         else if (MAP.equals(type.getTypeSignature().getBase())) {
             block = readMap(type, path, offsets);
         }
         else if (ARRAY.equals(type.getTypeSignature().getBase())) {
-            block = readArray(type, path, offsets);
+            block = readArray(type, field.asGroupType().getType(0).asGroupType(), path, offsets);
         }
         else {
             block = readPrimitive(descriptor.get(), type, offsets);
         }
-        path.remove(name);
+        path.remove(field.getName());
         return block;
     }
 }

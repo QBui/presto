@@ -867,7 +867,7 @@ public class ParquetHiveRecordCursor
                     }
                  }
               vs
-                    optional group last_attributed_touch_data_plus_via_features (LIST) {
+                 optional group last_attributed_touch_data_plus_via_features (LIST) {
                     repeated binary array (UTF8);
                   }
              */

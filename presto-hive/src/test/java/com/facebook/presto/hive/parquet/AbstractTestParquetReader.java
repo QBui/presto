@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.hive.parquet;
 
+import com.facebook.presto.spi.type.ArrayType;
+import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.SqlDate;
 import com.facebook.presto.spi.type.SqlTimestamp;
 import com.facebook.presto.spi.type.SqlVarbinary;
@@ -23,18 +25,21 @@ import com.google.common.collect.DiscreteDomain;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Range;
 import com.google.common.primitives.Shorts;
+import org.apache.hadoop.mapred.JobConf;
 import org.joda.time.DateTimeZone;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import parquet.hadoop.ParquetOutputFormat;
 import parquet.hadoop.codec.CodecConfig;
 
+import java.io.File;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
@@ -51,6 +56,8 @@ import static com.facebook.presto.spi.type.TimeZoneKey.UTC_KEY;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.tests.StructuralTestUtil.arrayBlockOf;
+import static com.facebook.presto.tests.StructuralTestUtil.rowBlockOf;
 import static com.google.common.base.Functions.compose;
 import static com.google.common.collect.Iterables.concat;
 import static com.google.common.collect.Iterables.cycle;
@@ -277,6 +284,54 @@ public abstract class AbstractTestParquetReader
             throws Exception
     {
         tester.testRoundTrip(javaByteArrayObjectInspector, limit(cycle(new byte[0]), 30_000), AbstractTestParquetReader::byteArrayToVarbinary, VARBINARY);
+    }
+
+    @Test
+    public void testNestedSchema()
+            throws Exception
+    {
+        RowType nameType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.of(ImmutableList.of("first_name", "last_name")));
+        RowType phoneType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.of(ImmutableList.of("number", "type")));
+        RowType personType = new RowType(ImmutableList.of(nameType, INTEGER, createUnboundedVarcharType(), new ArrayType(phoneType)), Optional.of(ImmutableList.of("name", "id", "email", "phones")));
+        ArrayType personArrayType = new ArrayType(personType);
+
+        File file = new File(this.getClass().getClassLoader().getResource("addressbook_spark16.gz.parquet").getPath());
+
+        tester.assertFileContents(new JobConf(),
+                file,
+                ImmutableList.of(arrayBlockOf(personType,
+                    rowBlockOf(ImmutableList.of(nameType, INTEGER, createUnboundedVarcharType(), new ArrayType(phoneType)),
+                        rowBlockOf(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), "Bob", "Roberts"),
+                        0,
+                        "bob.roberts@example.com",
+                        arrayBlockOf(phoneType, rowBlockOf(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), "1234567890", null))
+                    )
+                )),
+                personArrayType);
+    }
+
+    @Test
+    public void testNestedSchema1()
+            throws Exception
+    {
+        RowType nameType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.of(ImmutableList.of("first_name", "last_name")));
+        RowType phoneType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.of(ImmutableList.of("number", "type")));
+        RowType personType = new RowType(ImmutableList.of(nameType, INTEGER, createUnboundedVarcharType(), new ArrayType(phoneType)), Optional.of(ImmutableList.of("name", "id", "email", "phones")));
+        ArrayType personArrayType = new ArrayType(personType);
+
+        File file = new File(this.getClass().getClassLoader().getResource("addressbook.parquet").getPath());
+
+        tester.assertFileContents(new JobConf(),
+                file,
+                ImmutableList.of(arrayBlockOf(personType,
+                        rowBlockOf(ImmutableList.of(nameType, INTEGER, createUnboundedVarcharType(), new ArrayType(phoneType)),
+                                rowBlockOf(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), "Bob", "Roberts"),
+                                0,
+                                "bob.roberts@example.com",
+                                arrayBlockOf(phoneType, rowBlockOf(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), "1234567890", null))
+                        )
+                )),
+                personArrayType);
     }
 
     private static <T> Iterable<T> skipEvery(int n, Iterable<T> iterable)

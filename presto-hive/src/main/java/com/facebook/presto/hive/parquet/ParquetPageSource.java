@@ -191,17 +191,18 @@ public class ParquetPageSource
                         continue;
                     }
 
-                    String fieldName = fileSchema.getFields().get(fieldIndex).getName();
+                    parquet.schema.Type field = fileSchema.getFields().get(fieldIndex);
+                    String fieldName = field.getName();
                     List<String> path = new ArrayList<>();
                     path.add(fieldName);
                     if (ROW.equals(type.getTypeSignature().getBase())) {
-                        blocks[fieldId] = parquetReader.readStruct(type, path);
+                        blocks[fieldId] = parquetReader.readStruct(type, field.asGroupType(), path);
                     }
                     else if (MAP.equals(type.getTypeSignature().getBase())) {
                         blocks[fieldId] = parquetReader.readMap(type, path);
                     }
                     else if (ARRAY.equals(type.getTypeSignature().getBase())) {
-                        blocks[fieldId] = parquetReader.readArray(type, path);
+                        blocks[fieldId] = parquetReader.readArray(type, field, path);
                     }
                     else {
                         Optional<RichColumnDescriptor> descriptor = getDescriptor(fileSchema, requestedSchema, path);
