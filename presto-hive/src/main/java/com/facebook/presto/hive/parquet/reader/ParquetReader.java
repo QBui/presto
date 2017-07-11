@@ -62,11 +62,6 @@ public class ParquetReader
     private static final String MAP_TYPE_NAME = "map";
     private static final String MAP_KEY_NAME = "key";
     private static final String MAP_VALUE_NAME = "value";
-    private static final String ARRAY_TYPE_NAME = "list";
-    private static final String ARRAY_ELEMENT_NAME = "element";
-
-//    private static final String ARRAY_TYPE_NAME = "bag";
-//    private static final String ARRAY_ELEMENT_NAME = "array_element";
 
     private final MessageType fileSchema;
     private final MessageType requestedSchema;
@@ -152,10 +147,10 @@ public class ParquetReader
         return true;
     }
 
-    public Block readArray(Type type, parquet.schema.Type field, List<String> path)
+    public Block readArray(Type type, GroupType field, List<String> path)
             throws IOException
     {
-        return readArray(type, field.asGroupType().getType(0).asGroupType(), path, new IntArrayList());
+        return readArray(type, field.getType(0).asGroupType(), path, new IntArrayList());
     }
 
     private Block readArray(Type type, GroupType field, List<String> path, IntList elementOffsets)

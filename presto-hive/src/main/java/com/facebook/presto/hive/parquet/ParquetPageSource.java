@@ -202,7 +202,7 @@ public class ParquetPageSource
                         blocks[fieldId] = parquetReader.readMap(type, path);
                     }
                     else if (ARRAY.equals(type.getTypeSignature().getBase())) {
-                        blocks[fieldId] = parquetReader.readArray(type, field, path);
+                        blocks[fieldId] = parquetReader.readArray(type, field.asGroupType(), path);
                     }
                     else {
                         Optional<RichColumnDescriptor> descriptor = getDescriptor(fileSchema, requestedSchema, path);
