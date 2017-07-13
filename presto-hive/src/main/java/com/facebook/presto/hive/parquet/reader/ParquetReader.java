@@ -188,6 +188,7 @@ public class ParquetReader
     }
 
     /*
+        Copied from spark
         Here we implement Parquet LIST backwards-compatibility rules.
         See: https://github.com/apache/parquet-format/blob/master/LogicalTypes.md#backward-compatibility-rules
      */
@@ -253,11 +254,12 @@ public class ParquetReader
 
         IntList keyOffsets = new IntArrayList();
         IntList valueOffsets = new IntArrayList();
-        parquet.schema.Type repeatedType = field.asGroupType().getType(0);
+        checkArgument(field.getFieldCount() == 1 && !field.getType(0).isPrimitive(), "Invalid list type %s", field.getName());
+        GroupType repeatedType = field.getType(0).asGroupType();
         path.add(field.getName());
         path.add(repeatedType.getName());
-        blocks[0] = readBlock(parameters.get(0), repeatedType.asGroupType().getType(0), path, keyOffsets);
-        blocks[1] = readBlock(parameters.get(1), repeatedType.asGroupType().getType(1), path, valueOffsets);
+        blocks[0] = readBlock(parameters.get(0), repeatedType.getType(0), path, keyOffsets);
+        blocks[1] = readBlock(parameters.get(1), repeatedType.getType(1), path, valueOffsets);
         path.remove(path.size() - 1);
         path.remove(path.size() - 1);
 
