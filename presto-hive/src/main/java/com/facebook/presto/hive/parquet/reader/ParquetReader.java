@@ -60,9 +60,6 @@ public class ParquetReader
         implements Closeable
 {
     private static final int MAX_VECTOR_LENGTH = 1024;
-    private static final String MAP_TYPE_NAME = "map";
-    private static final String MAP_KEY_NAME = "key";
-    private static final String MAP_VALUE_NAME = "value";
 
     private final MessageType fileSchema;
     private final MessageType requestedSchema;
