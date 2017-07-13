@@ -194,17 +194,17 @@ public class ParquetPageSource
                     parquet.schema.Type field = fileSchema.getFields().get(fieldIndex);
                     String fieldName = field.getName();
                     List<String> path = new ArrayList<>();
-                    path.add(fieldName);
                     if (ROW.equals(type.getTypeSignature().getBase())) {
                         blocks[fieldId] = parquetReader.readStruct(type, field.asGroupType(), path);
                     }
                     else if (MAP.equals(type.getTypeSignature().getBase())) {
-                        blocks[fieldId] = parquetReader.readMap(type, path);
+                        blocks[fieldId] = parquetReader.readMap(type, field.asGroupType(), path);
                     }
                     else if (ARRAY.equals(type.getTypeSignature().getBase())) {
                         blocks[fieldId] = parquetReader.readArray(type, field.asGroupType(), path);
                     }
                     else {
+                        path.add(fieldName);
                         Optional<RichColumnDescriptor> descriptor = getDescriptor(fileSchema, requestedSchema, path);
                         if (descriptor.isPresent()) {
                             blocks[fieldId] = new LazyBlock(batchSize, new ParquetBlockLoader(descriptor.get(), type));
