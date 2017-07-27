@@ -31,6 +31,8 @@ import kafka.javaapi.TopicMetadataRequest;
 import kafka.javaapi.TopicMetadataResponse;
 import kafka.javaapi.consumer.SimpleConsumer;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
 
 import java.util.List;
 import java.util.Map;
@@ -43,13 +45,13 @@ import static java.util.Objects.requireNonNull;
 
 public class KafkaPartitionManager
 {
-    private static final Logger log = Logger.get(KafkaUtil.class);
+    private static final Logger log = Logger.get(KafkaPartitionManager.class);
 
+    private final JedisPool jedisPool;
     private final String connectorId;
     private final KafkaSimpleConsumerManager consumerManager;
     private final Set<HostAddress> nodes;
     private final boolean metastoreEnabled;
-    private final String metastoreHost;
     private final int metastoreIndex;
 
     @Inject
@@ -63,8 +65,8 @@ public class KafkaPartitionManager
         this.nodes = ImmutableSet.copyOf(kafkaConnectorConfig.getNodes());
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
         this.metastoreEnabled = kafkaConnectorConfig.getMetastoreEnabled();
-        this.metastoreHost = kafkaConnectorConfig.getMetastoreHost();
         this.metastoreIndex = kafkaConnectorConfig.getMetastoreIndex();
+        this.jedisPool = new JedisPool(new JedisPoolConfig(), kafkaConnectorConfig.getMetastoreHost());
     }
 
     public KafkaPartitionResult getPartitions(ConnectorTableHandle tableHandle, Constraint<ColumnHandle> constraint)
@@ -106,25 +108,27 @@ public class KafkaPartitionManager
     {
         ImmutableList.Builder<KafkaPartition> partitions = ImmutableList.builder();
 
-        Jedis jedis = new Jedis(metastoreHost);
-        jedis.select(metastoreIndex);
-        Set<String> topicTsVals = jedis.zrange(topicName, 1, -1);
-        for (String topicTsVal : topicTsVals) {
-            String[] topicTsPair = topicTsVal.split(":");
-            Set<String> partitionOffsetVals = jedis.smembers(topicTsVal);
-            for (String partitionOffsetVal : partitionOffsetVals) {
-                String[] partitionOffsetPair = partitionOffsetVal.split(":");
-                ImmutableMap.Builder<ColumnHandle, NullableValue> partitionValuesBuilder = ImmutableMap.builder();
-                partitionValuesBuilder.put(partitionColumns.get(0), NullableValue.of(BigintType.BIGINT, Long.parseLong(partitionOffsetPair[0])));
-                partitionValuesBuilder.put(partitionColumns.get(1), NullableValue.of(BigintType.BIGINT, Long.parseLong(partitionOffsetPair[1])));
-                partitionValuesBuilder.put(partitionColumns.get(2), NullableValue.of(BigintType.BIGINT, Long.parseLong(partitionOffsetPair[2])));
-                partitionValuesBuilder.put(partitionColumns.get(3), NullableValue.of(BigintType.BIGINT, Long.parseLong(topicTsPair[1])));
-                ImmutableMap<ColumnHandle, NullableValue> partitionValues = partitionValuesBuilder.build();
-                if (constraint.predicate().test(partitionValues)) {
-//                    log.debug("Adding Partition %s/%s from %s to %s", topicName, partitionId, offsets[i], offsets[i - 1]);
-                    partitions.add(new KafkaPartition(partitionValues, partitionWithLeader.get(Integer.parseInt(partitionOffsetPair[0])),
-                            Integer.parseInt(partitionOffsetPair[0]), Long.parseLong(partitionOffsetPair[1]), Long.parseLong(partitionOffsetPair[2]),
-                            Long.parseLong(topicTsPair[1])));
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.select(metastoreIndex);
+            Set<String> topicTsVals = jedis.zrange(topicName, 1, -1);
+            for (String topicTsVal : topicTsVals) {
+                String[] topicTsPair = topicTsVal.split(":");
+                Set<String> partitionOffsetVals = jedis.smembers(topicTsVal);
+                for (String partitionOffsetVal : partitionOffsetVals) {
+                    String[] partitionOffsetPair = partitionOffsetVal.split(":");
+                    ImmutableMap.Builder<ColumnHandle, NullableValue> partitionValuesBuilder = ImmutableMap.builder();
+                    partitionValuesBuilder.put(partitionColumns.get(0), NullableValue.of(BigintType.BIGINT, Long.parseLong(partitionOffsetPair[0])));
+                    partitionValuesBuilder.put(partitionColumns.get(1), NullableValue.of(BigintType.BIGINT, Long.parseLong(partitionOffsetPair[1])));
+                    partitionValuesBuilder.put(partitionColumns.get(2), NullableValue.of(BigintType.BIGINT, Long.parseLong(partitionOffsetPair[2])));
+                    partitionValuesBuilder.put(partitionColumns.get(3), NullableValue.of(BigintType.BIGINT, Long.parseLong(topicTsPair[1])));
+                    ImmutableMap<ColumnHandle, NullableValue> partitionValues = partitionValuesBuilder.build();
+                    if (constraint.predicate().test(partitionValues)) {
+//                        log.debug("Adding Partition %s/%s from %s to %s at %s", topicName, Integer.parseInt(partitionOffsetPair[0]), Long.parseLong(partitionOffsetPair[1]), Long.parseLong(partitionOffsetPair[2]),
+//                                Long.parseLong(topicTsPair[1]));
+                        partitions.add(new KafkaPartition(partitionValues, partitionWithLeader.get(Integer.parseInt(partitionOffsetPair[0])),
+                                Integer.parseInt(partitionOffsetPair[0]), Long.parseLong(partitionOffsetPair[1]), Long.parseLong(partitionOffsetPair[2]),
+                                Long.parseLong(topicTsPair[1])));
+                    }
                 }
             }
         }
