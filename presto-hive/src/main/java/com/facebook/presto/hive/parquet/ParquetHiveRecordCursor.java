@@ -716,7 +716,12 @@ public class ParquetHiveRecordCursor
         GroupType groupType = parquetType.asGroupType();
         switch (prestoType.getTypeSignature().getBase()) {
             case ARRAY:
-                return new ParquetListConverter(prestoType, columnName, groupType, fieldIndex);
+                if (((GroupType) parquetType).getFieldCount() != 1) {
+                    return new ParquetRepeatedGroupConverter(prestoType, columnName, groupType, fieldIndex);
+                }
+                else {
+                    return new ParquetListConverter(prestoType, columnName, groupType, fieldIndex);
+                }
             case MAP:
                 return new ParquetMapConverter(prestoType, columnName, groupType, fieldIndex);
             case ROW:
@@ -803,6 +808,134 @@ public class ParquetHiveRecordCursor
             }
             while (currentEntryBuilder.getPositionCount() < converters.size()) {
                 currentEntryBuilder.appendNull();
+            }
+
+            if (builder == null) {
+                nullBuilder.closeEntry();
+            }
+            else {
+                builder.closeEntry();
+            }
+        }
+
+        @Override
+        public void afterValue()
+        {
+        }
+
+        @Override
+        public Block getBlock()
+        {
+            checkState(builder == null && nullBuilder != null); // check that user requested a result block (builder == null), and the program followed the request (nullBuilder != null)
+            return nullBuilder.getObject(nullBuilder.getPositionCount() - 1, Block.class);
+        }
+    }
+
+    private static class ParquetRepeatedGroupConverter
+            extends GroupedConverter
+    {
+        private static final int NULL_BUILDER_POSITIONS_THRESHOLD = 100;
+        private static final int NULL_BUILDER_SIZE_IN_BYTES_THRESHOLD = 32768;
+
+        private final Type rowType;
+        private final int fieldIndex;
+
+        private final Type groupType;
+
+        private final List<BlockConverter> converters;
+        private BlockBuilder builder;
+        private BlockBuilder nullBuilder; // used internally when builder is set to null
+        private BlockBuilder currentGroupBuilder;
+
+        public ParquetRepeatedGroupConverter(Type prestoType, String columnName, GroupType entryType, int fieldIndex)
+        {
+            /*
+                optional group category_ids (LIST) {
+                    repeated group list {
+                      optional binary element (UTF8);
+                    }
+                  }
+              vs
+                 repeated group headers {
+                    optional binary key (UTF8);
+                    optional binary value (UTF8);
+                  }
+              vs
+                 optional group other_stores (LIST) {
+                    repeated group list {
+                      optional group element {
+                        optional binary id (UTF8);
+                        optional binary store (UTF8);
+                      }
+                    }
+                 }
+              vs
+                 optional group last_attributed_touch_data_plus_via_features (LIST) {
+                    repeated binary array (UTF8);
+                  }
+             */
+
+//            checkArgument(ROW.equals(prestoType.getTypeSignature().getBase()));
+            List<Type> prestoTypeParameters = prestoType.getTypeParameters().get(0).getTypeParameters();
+            List<parquet.schema.Type> fieldTypes = entryType.getFields();
+//            checkArgument(
+//                    prestoTypeParameters.size() == fieldTypes.size(),
+//                    "Schema mismatch, metastore schema for row column %s has %s fields but parquet schema has %s fields",
+//                    columnName,
+//                    prestoTypeParameters.size(),
+//                    fieldTypes.size());
+            groupType = prestoType;
+            this.rowType = prestoType.getTypeParameters().get(0);
+            this.fieldIndex = fieldIndex;
+
+            ImmutableList.Builder<BlockConverter> converters = ImmutableList.builder();
+            for (int i = 0; i < prestoTypeParameters.size(); i++) {
+                parquet.schema.Type fieldType = fieldTypes.get(i);
+                converters.add(createConverter(prestoTypeParameters.get(i), columnName + "." + fieldType.getName(), fieldType, i));
+            }
+            this.converters = converters.build();
+        }
+
+        @Override
+        public Converter getConverter(int fieldIndex)
+        {
+            return (Converter) converters.get(fieldIndex);
+        }
+
+        @Override
+        public void beforeValue(BlockBuilder builder)
+        {
+            this.builder = builder;
+        }
+
+        @Override
+        public void start()
+        {
+            if (builder == null) {
+                if (nullBuilder == null || (nullBuilder.getPositionCount() >= NULL_BUILDER_POSITIONS_THRESHOLD && nullBuilder.getSizeInBytes() >= NULL_BUILDER_SIZE_IN_BYTES_THRESHOLD)) {
+                    nullBuilder = groupType.createBlockBuilder(new BlockBuilderStatus(), NULL_BUILDER_POSITIONS_THRESHOLD);
+                }
+                currentGroupBuilder = nullBuilder.beginBlockEntry();
+            }
+            else {
+                while (builder.getPositionCount() < fieldIndex) {
+                    builder.appendNull();
+                }
+                currentGroupBuilder = builder.beginBlockEntry();
+            }
+            for (BlockConverter converter : converters) {
+                converter.beforeValue(currentGroupBuilder);
+            }
+        }
+
+        @Override
+        public void end()
+        {
+            for (BlockConverter converter : converters) {
+                converter.afterValue();
+            }
+            while (currentGroupBuilder.getPositionCount() < converters.size()) {
+                currentGroupBuilder.appendNull();
             }
 
             if (builder == null) {
@@ -953,6 +1086,99 @@ public class ParquetHiveRecordCursor
             return nullBuilder.getObject(nullBuilder.getPositionCount() - 1, Block.class);
         }
     }
+
+//    private static class ParquetListConverter2
+//            extends GroupedConverter
+//    {
+//        private static final int NULL_BUILDER_POSITIONS_THRESHOLD = 100;
+//        private static final int NULL_BUILDER_SIZE_IN_BYTES_THRESHOLD = 32768;
+//
+//        private final Type rowType;
+//        private final int fieldIndex;
+//
+//        private final List<BlockConverter> converters;
+//        private BlockBuilder builder;
+//        private BlockBuilder nullBuilder; // used internally when builder is set to null
+//        private BlockBuilder currentGroupBuilder;
+//
+//        public ParquetListConverter2(Type prestoType, String columnName, GroupType entryType, int fieldIndex)
+//        {
+//            checkArgument(ROW.equals(prestoType.getTypeSignature().getBase()));
+//            List<Type> prestoTypeParameters = prestoType.getTypeParameters();
+//            List<parquet.schema.Type> fieldTypes = entryType.getFields();
+//            checkArgument(
+//                    prestoTypeParameters.size() == fieldTypes.size(),
+//                    "Schema mismatch, metastore schema for row column %s has %s fields but parquet schema has %s fields",
+//                    columnName,
+//                    prestoTypeParameters.size(),
+//                    fieldTypes.size());
+//
+//            this.rowType = prestoType;
+//            this.fieldIndex = fieldIndex;
+//
+//            ImmutableList.Builder<BlockConverter> converters = ImmutableList.builder();
+//            for (int i = 0; i < prestoTypeParameters.size(); i++) {
+//                parquet.schema.Type fieldType = fieldTypes.get(i);
+//                converters.add(createConverter(prestoTypeParameters.get(i), columnName + "." + fieldType.getName(), fieldType, i));
+//            }
+//            this.converters = converters.build();
+//        }
+//
+//        @Override
+//        public void beforeValue(BlockBuilder builder)
+//        {
+//            this.builder = builder;
+//        }
+//
+//        @Override
+//        public Converter getConverter(int fieldIndex)
+//        {
+//            return (Converter) converters.get(fieldIndex);
+//        }
+//
+//        @Override
+//        public void start()
+//        {
+//            if (builder == null) {
+//                if (nullBuilder == null || (nullBuilder.getPositionCount() >= NULL_BUILDER_POSITIONS_THRESHOLD && nullBuilder.getSizeInBytes() >= NULL_BUILDER_SIZE_IN_BYTES_THRESHOLD)) {
+//                    nullBuilder = arrayType.createBlockBuilder(new BlockBuilderStatus(), NULL_BUILDER_POSITIONS_THRESHOLD);
+//                }
+//                currentGroupBuilder = nullBuilder.beginBlockEntry();
+//            }
+//            else {
+//                while (builder.getPositionCount() < fieldIndex) {
+//                    builder.appendNull();
+//                }
+//                currentGroupBuilder = builder.beginBlockEntry();
+//            }
+//            elementConverter.beforeValue(currentGroupBuilder);
+//        }
+//
+//        @Override
+//        public void end()
+//        {
+//            elementConverter.afterValue();
+//
+//            if (builder == null) {
+//                nullBuilder.closeEntry();
+//            }
+//            else {
+//                builder.closeEntry();
+//            }
+//        }
+//
+//        @Override
+//        public void afterValue()
+//        {
+//        }
+//
+//        @Override
+//        public Block getBlock()
+//        {
+//            checkState(builder == null && nullBuilder != null); // check that user requested a result block (builder == null), and the program followed the request (nullBuilder != null)
+//            return nullBuilder.getObject(nullBuilder.getPositionCount() - 1, Block.class);
+//        }
+//    }
 
     private static class ParquetListEntryConverter
             extends GroupConverter
