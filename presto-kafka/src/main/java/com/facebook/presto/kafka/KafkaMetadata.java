@@ -227,7 +227,7 @@ public class KafkaMetadata
         List<ColumnHandle> partitionColumns = kafkaLayoutHandle.getPartitionColumns();
         List<KafkaPartition> partitions = kafkaLayoutHandle.getPartitions();
 
-        TupleDomain<ColumnHandle> predicate =  TupleDomain.all();
+        TupleDomain<ColumnHandle> predicate = TupleDomain.all();
         Optional<DiscretePredicates> discretePredicates = Optional.empty();
         if (!partitionColumns.isEmpty()) {
             // Do not create tuple domains for every partition at the same time!

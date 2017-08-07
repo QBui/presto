@@ -145,7 +145,7 @@ public class KafkaPartitionManager
                     HostAddress partitionLeader = partiionIdWithLeader.getValue();
                     SimpleConsumer leaderConsumer = consumerManager.getConsumer(partitionLeader);
                     // Kafka contains a reverse list of "end - start" pairs for the splits
-                    long[] offsets = findAllOffsets(leaderConsumer,  topicName, partitionId);
+                    long[] offsets = findAllOffsets(leaderConsumer, topicName, partitionId);
                     ImmutableList.Builder<KafkaPartition> partitions = ImmutableList.builder();
                     for (int i = offsets.length - 1; i > 0; i--) {
                         ImmutableMap.Builder<ColumnHandle, NullableValue> partitionValuesBuilder = ImmutableMap.builder();

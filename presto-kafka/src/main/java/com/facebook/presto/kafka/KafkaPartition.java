@@ -45,10 +45,10 @@ public class KafkaPartition
     {
         this.keys = ImmutableMap.copyOf(requireNonNull(keys, "keys is null"));
         this.partitionLeader = requireNonNull(partitionLeader, "partitionLeader is null");
-        this.partitionId = requireNonNull(partitionId,  "partitionLeader is null");
-        this.offsetStart = requireNonNull(offsetStart,  "offsetStart is null");
-        this.offsetEnd = requireNonNull(offsetEnd,  "offsetEnd is null");
-        this.timestamp = requireNonNull(timestamp,  "timestamp is null");
+        this.partitionId = requireNonNull(partitionId, "partitionLeader is null");
+        this.offsetStart = requireNonNull(offsetStart, "offsetStart is null");
+        this.offsetEnd = requireNonNull(offsetEnd, "offsetEnd is null");
+        this.timestamp = requireNonNull(timestamp, "timestamp is null");
     }
 
     @JsonProperty

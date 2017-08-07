@@ -48,7 +48,6 @@ import parquet.schema.MessageType;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -217,48 +216,48 @@ public class ParquetTester
         parquetReader.close();
     }
 
-    public static void assertFileContents(JobConf jobConf,
-                                           File file,
-                                           Iterable<?> expectedValues,
-                                           Type type)
-            throws IOException, InterruptedException
-    {
-        Path path = new Path(file.toURI());
-        FileSystem fileSystem = path.getFileSystem(jobConf);
-        ParquetMetadata parquetMetadata = ParquetMetadataReader.readFooter(fileSystem, path);
-        FileMetaData fileMetaData = parquetMetadata.getFileMetaData();
-        MessageType fileSchema = fileMetaData.getSchema();
-
-        long size = fileSystem.getFileStatus(path).getLen();
-        FSDataInputStream inputStream = fileSystem.open(path);
-        ParquetDataSource dataSource = new HdfsParquetDataSource(path, size, inputStream);
-
-        ParquetReader parquetReader = new ParquetReader(fileSchema, fileSchema, parquetMetadata.getBlocks(), dataSource, TYPE_MANAGER, new AggregatedMemoryContext());
-        assertEquals(parquetReader.getPosition(), 0);
-
-        List<String> p = new ArrayList<>();
-        parquet.schema.Type field = fileSchema.getType(0);
-        int rowsProcessed = 0;
-        Iterator<?> iterator = expectedValues.iterator();
-        for (int batchSize = parquetReader.nextBatch(); batchSize >= 0; batchSize = parquetReader.nextBatch()) {
-//            ColumnDescriptor columnDescriptor = fileSchema.getColumns().get(0);
-            Block block = parquetReader.readArray(type, field.asGroupType(), p);
-            assertEquals(block, iterator.next());
-            for (int i = 0; i < batchSize; i++) {
-//                assertTrue(iterator.hasNext());
-//                Object expected = iterator.next();
-                Object actual = decodeObject(type, block, i);
-                System.out.println(actual);
-//                assertEquals(actual, expected);
-            }
-            rowsProcessed += batchSize;
-            assertEquals(parquetReader.getPosition(), rowsProcessed);
-        }
-//        assertFalse(iterator.hasNext());
-
-        assertEquals(parquetReader.getPosition(), rowsProcessed);
-        parquetReader.close();
-    }
+//    public static void assertFileContents(JobConf jobConf,
+//                                           File file,
+//                                           Iterable<?> expectedValues,
+//                                           Type type)
+//            throws IOException, InterruptedException
+//    {
+//        Path path = new Path(file.toURI());
+//        FileSystem fileSystem = path.getFileSystem(jobConf);
+//        ParquetMetadata parquetMetadata = ParquetMetadataReader.readFooter(fileSystem, path);
+//        FileMetaData fileMetaData = parquetMetadata.getFileMetaData();
+//        MessageType fileSchema = fileMetaData.getSchema();
+//
+//        long size = fileSystem.getFileStatus(path).getLen();
+//        FSDataInputStream inputStream = fileSystem.open(path);
+//        ParquetDataSource dataSource = new HdfsParquetDataSource(path, size, inputStream);
+//
+//        ParquetReader parquetReader = new ParquetReader(fileSchema, fileSchema, parquetMetadata.getBlocks(), dataSource, TYPE_MANAGER, new AggregatedMemoryContext());
+//        assertEquals(parquetReader.getPosition(), 0);
+//
+//        List<String> p = new ArrayList<>();
+//        parquet.schema.Type field = fileSchema.getType(0);
+//        int rowsProcessed = 0;
+//        Iterator<?> iterator = expectedValues.iterator();
+//        for (int batchSize = parquetReader.nextBatch(); batchSize >= 0; batchSize = parquetReader.nextBatch()) {
+////            ColumnDescriptor columnDescriptor = fileSchema.getColumns().get(0);
+//            Block block = parquetReader.readArray(type, field.asGroupType(), p);
+//            assertEquals(block, iterator.next());
+//            for (int i = 0; i < batchSize; i++) {
+////                assertTrue(iterator.hasNext());
+////                Object expected = iterator.next();
+//                Object actual = decodeObject(type, block, i);
+//                System.out.println(actual);
+////                assertEquals(actual, expected);
+//            }
+//            rowsProcessed += batchSize;
+//            assertEquals(parquetReader.getPosition(), rowsProcessed);
+//        }
+////        assertFalse(iterator.hasNext());
+//
+//        assertEquals(parquetReader.getPosition(), rowsProcessed);
+//        parquetReader.close();
+//    }
 
     private static DataSize writeParquetColumn(JobConf jobConf,
             File outputFile,
