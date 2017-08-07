@@ -69,6 +69,21 @@ public class KafkaConnectorConfig
      */
     private boolean hideInternalColumns = true;
 
+    /**
+     * Whether enable the metastore or not. Default is no.
+     */
+    private boolean metastoreEnabled = false;
+
+    /**
+     * redis host
+     */
+    private String metastoreHost = "localhost";
+
+    /**
+     *redis database index
+     */
+    private int metastoreIndex = 0;
+
     @NotNull
     public File getTableDescriptionDir()
     {
@@ -119,6 +134,42 @@ public class KafkaConnectorConfig
     {
         this.nodes = (nodes == null) ? null : parseNodes(nodes);
         return this;
+    }
+
+    @Config("kafka.metastore.enabled")
+    public KafkaConnectorConfig setMetastoreEnabled(boolean metastoreEnabled)
+    {
+        this.metastoreEnabled = metastoreEnabled;
+        return this;
+    }
+
+    public boolean getMetastoreEnabled()
+    {
+        return metastoreEnabled;
+    }
+
+    @Config("kafka.metastore.host")
+    public KafkaConnectorConfig setMetastoreHost(String metastoreHost)
+    {
+        this.metastoreHost = metastoreHost;
+        return this;
+    }
+
+    public String getMetastoreHost()
+    {
+        return metastoreHost;
+    }
+
+    @Config("kafka.metastore.index")
+    public KafkaConnectorConfig setMetastoreIndex(int metastoreIndex)
+    {
+        this.metastoreIndex = metastoreIndex;
+        return this;
+    }
+
+    public int getMetastoreIndex()
+    {
+        return metastoreIndex;
     }
 
     @MinDuration("1s")

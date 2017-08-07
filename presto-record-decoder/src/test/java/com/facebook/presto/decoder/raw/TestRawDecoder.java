@@ -57,7 +57,7 @@ public class TestRawDecoder
         DecoderTestColumnHandle column = new DecoderTestColumnHandle("", 0, "row1", BigintType.BIGINT, null, "LONG", null, false, false, false);
         List<DecoderColumnHandle> columns = ImmutableList.of(column);
         Set<FieldValueProvider> providers = new HashSet<>();
-        boolean corrupt = rowDecoder.decodeRow(emptyRow, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(emptyRow, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
         checkIsNull(providers, column);
     }
@@ -85,7 +85,7 @@ public class TestRawDecoder
         List<DecoderColumnHandle> columns = ImmutableList.of(row1, row2, row3, row4, row5);
         Set<FieldValueProvider> providers = new HashSet<>();
 
-        boolean corrupt = rowDecoder.decodeRow(row, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(row, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
 
         assertEquals(providers.size(), columns.size());
@@ -112,7 +112,7 @@ public class TestRawDecoder
         List<DecoderColumnHandle> columns = ImmutableList.of(row1, row2, row3, row4);
         Set<FieldValueProvider> providers = new HashSet<>();
 
-        boolean corrupt = rowDecoder.decodeRow(row, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(row, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
 
         assertEquals(providers.size(), columns.size());
@@ -143,7 +143,7 @@ public class TestRawDecoder
         List<DecoderColumnHandle> columns = ImmutableList.of(row1, row2);
         Set<FieldValueProvider> providers = new HashSet<>();
 
-        boolean corrupt = rowDecoder.decodeRow(row, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(row, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
 
         assertEquals(providers.size(), columns.size());
@@ -219,7 +219,7 @@ public class TestRawDecoder
 
         Set<FieldValueProvider> providers = new HashSet<>();
 
-        boolean corrupt = rowDecoder.decodeRow(row, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(row, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
 
         assertEquals(providers.size(), columns.size());

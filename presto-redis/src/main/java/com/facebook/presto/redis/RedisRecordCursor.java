@@ -178,11 +178,13 @@ public class RedisRecordCursor
         fieldValueProviders.add(KEY_CORRUPT_FIELD.forBooleanValue(keyDecoder.decodeRow(
                 keyData,
                 null,
+                null,
                 fieldValueProviders,
                 columnHandles,
                 keyFieldDecoders)));
         fieldValueProviders.add(VALUE_CORRUPT_FIELD.forBooleanValue(valueDecoder.decodeRow(
                 valueData,
+                null,
                 valueMap,
                 fieldValueProviders,
                 columnHandles,

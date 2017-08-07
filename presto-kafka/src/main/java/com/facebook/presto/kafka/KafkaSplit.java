@@ -37,31 +37,40 @@ public class KafkaSplit
     private final String connectorId;
     private final String topicName;
     private final String keyDataFormat;
+    private final String keyDataSchema;
     private final String messageDataFormat;
+    private final String messageDataSchema;
     private final int partitionId;
     private final long start;
     private final long end;
     private final HostAddress leader;
+    private final long timestamp;
 
     @JsonCreator
     public KafkaSplit(
             @JsonProperty("connectorId") String connectorId,
             @JsonProperty("topicName") String topicName,
             @JsonProperty("keyDataFormat") String keyDataFormat,
+            @JsonProperty("keyDataSchema") String keyDataSchema,
             @JsonProperty("messageDataFormat") String messageDataFormat,
+            @JsonProperty("messageDataSchema") String messageDataSchema,
             @JsonProperty("partitionId") int partitionId,
             @JsonProperty("start") long start,
             @JsonProperty("end") long end,
-            @JsonProperty("leader") HostAddress leader)
+            @JsonProperty("leader") HostAddress leader,
+            @JsonProperty("timestamp") long timestamp)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.topicName = requireNonNull(topicName, "topicName is null");
         this.keyDataFormat = requireNonNull(keyDataFormat, "dataFormat is null");
+        this.keyDataSchema = keyDataSchema;
         this.messageDataFormat = requireNonNull(messageDataFormat, "messageDataFormat is null");
+        this.messageDataSchema = messageDataSchema;
         this.partitionId = partitionId;
         this.start = start;
         this.end = end;
         this.leader = requireNonNull(leader, "leader address is null");
+        this.timestamp = timestamp;
     }
 
     @JsonProperty
@@ -83,6 +92,12 @@ public class KafkaSplit
     }
 
     @JsonProperty
+    public long getTimestamp()
+    {
+        return timestamp;
+    }
+
+    @JsonProperty
     public String getTopicName()
     {
         return topicName;
@@ -95,9 +110,21 @@ public class KafkaSplit
     }
 
     @JsonProperty
+    public String getKeyDataSchema()
+    {
+        return keyDataSchema;
+    }
+
+    @JsonProperty
     public String getMessageDataFormat()
     {
         return messageDataFormat;
+    }
+
+    @JsonProperty
+    public String getMessageDataSchema()
+    {
+        return messageDataSchema;
     }
 
     @JsonProperty
@@ -137,11 +164,14 @@ public class KafkaSplit
                 .add("connectorId", connectorId)
                 .add("topicName", topicName)
                 .add("keyDataFormat", keyDataFormat)
+                .add("keyDataSchema", keyDataSchema)
                 .add("messageDataFormat", messageDataFormat)
+                .add("messageDataSchema", messageDataSchema)
                 .add("partitionId", partitionId)
                 .add("start", start)
                 .add("end", end)
                 .add("leader", leader)
+                .add("timestamp", timestamp)
                 .toString();
     }
 }

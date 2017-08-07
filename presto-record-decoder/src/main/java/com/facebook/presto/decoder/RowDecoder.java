@@ -31,6 +31,7 @@ public interface RowDecoder
      * Decodes a given set of bytes into field values.
      *
      * @param data The row data to decode.
+     * @param dataSchema The schema for the row data
      * @param dataMap The row  data with as fields map
      * @param fieldValueProviders Must be a mutable set. Any field value provider created by this row decoder is put into this set.
      * @param columnHandles List of column handles for which field values are required.
@@ -38,6 +39,7 @@ public interface RowDecoder
      */
     boolean decodeRow(
             byte[] data,
+            String dataSchema,
             Map<String, String> dataMap,
             Set<FieldValueProvider> fieldValueProviders,
             List<DecoderColumnHandle> columnHandles,

@@ -28,10 +28,9 @@ import static java.util.Objects.requireNonNull;
  * Kafka specific connector column handle.
  */
 public final class KafkaColumnHandle
-        implements DecoderColumnHandle, Comparable<KafkaColumnHandle>
+        implements DecoderColumnHandle
 {
     private final String connectorId;
-    private final int ordinalPosition;
 
     /**
      * Column Name
@@ -64,38 +63,40 @@ public final class KafkaColumnHandle
     private final boolean keyDecoder;
 
     /**
-     * True if the column should be hidden.
-     */
-    private final boolean hidden;
-
-    /**
      * True if the column is internal to the connector and not defined by a topic definition.
      */
     private final boolean internal;
 
+    public enum ColumnType
+    {
+        PARTITION_KEY,
+        REGULAR,
+        HIDDEN
+    }
+
+    private final ColumnType columnType;
+
     @JsonCreator
     public KafkaColumnHandle(
             @JsonProperty("connectorId") String connectorId,
-            @JsonProperty("ordinalPosition") int ordinalPosition,
             @JsonProperty("name") String name,
             @JsonProperty("type") Type type,
             @JsonProperty("mapping") String mapping,
             @JsonProperty("dataFormat") String dataFormat,
             @JsonProperty("formatHint") String formatHint,
             @JsonProperty("keyDecoder") boolean keyDecoder,
-            @JsonProperty("hidden") boolean hidden,
+            @JsonProperty("columnType") ColumnType columnType,
             @JsonProperty("internal") boolean internal)
 
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
-        this.ordinalPosition = ordinalPosition;
         this.name = requireNonNull(name, "name is null");
         this.type = requireNonNull(type, "type is null");
         this.mapping = mapping;
         this.dataFormat = dataFormat;
         this.formatHint = formatHint;
         this.keyDecoder = keyDecoder;
-        this.hidden = hidden;
+        this.columnType = columnType;
         this.internal = internal;
     }
 
@@ -103,12 +104,6 @@ public final class KafkaColumnHandle
     public String getConnectorId()
     {
         return connectorId;
-    }
-
-    @JsonProperty
-    public int getOrdinalPosition()
-    {
-        return ordinalPosition;
     }
 
     @Override
@@ -155,7 +150,7 @@ public final class KafkaColumnHandle
     @JsonProperty
     public boolean isHidden()
     {
-        return hidden;
+        return columnType == ColumnType.HIDDEN;
     }
 
     @Override
@@ -167,13 +162,13 @@ public final class KafkaColumnHandle
 
     ColumnMetadata getColumnMetadata()
     {
-        return new ColumnMetadata(name, type, null, hidden);
+        return new ColumnMetadata(name, type, null, isHidden());
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(connectorId, ordinalPosition, name, type, mapping, dataFormat, formatHint, keyDecoder, hidden, internal);
+        return Objects.hash(connectorId, name, type, mapping, dataFormat, formatHint, keyDecoder, isHidden(), internal);
     }
 
     @Override
@@ -188,21 +183,14 @@ public final class KafkaColumnHandle
 
         KafkaColumnHandle other = (KafkaColumnHandle) obj;
         return Objects.equals(this.connectorId, other.connectorId) &&
-                Objects.equals(this.ordinalPosition, other.ordinalPosition) &&
                 Objects.equals(this.name, other.name) &&
                 Objects.equals(this.type, other.type) &&
                 Objects.equals(this.mapping, other.mapping) &&
                 Objects.equals(this.dataFormat, other.dataFormat) &&
                 Objects.equals(this.formatHint, other.formatHint) &&
                 Objects.equals(this.keyDecoder, other.keyDecoder) &&
-                Objects.equals(this.hidden, other.hidden) &&
+                Objects.equals(this.isHidden(), other.isHidden()) &&
                 Objects.equals(this.internal, other.internal);
-    }
-
-    @Override
-    public int compareTo(KafkaColumnHandle otherHandle)
-    {
-        return Integer.compare(this.getOrdinalPosition(), otherHandle.getOrdinalPosition());
     }
 
     @Override
@@ -210,14 +198,13 @@ public final class KafkaColumnHandle
     {
         return toStringHelper(this)
                 .add("connectorId", connectorId)
-                .add("ordinalPosition", ordinalPosition)
                 .add("name", name)
                 .add("type", type)
                 .add("mapping", mapping)
                 .add("dataFormat", dataFormat)
                 .add("formatHint", formatHint)
                 .add("keyDecoder", keyDecoder)
-                .add("hidden", hidden)
+                .add("hidden", isHidden())
                 .add("internal", internal)
                 .toString();
     }

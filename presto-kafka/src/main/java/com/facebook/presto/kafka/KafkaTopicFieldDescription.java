@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Objects;
 
+import static com.facebook.presto.kafka.KafkaColumnHandle.ColumnType;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -36,7 +37,7 @@ public final class KafkaTopicFieldDescription
     private final String comment;
     private final String dataFormat;
     private final String formatHint;
-    private final boolean hidden;
+    private final ColumnType columnType;
 
     @JsonCreator
     public KafkaTopicFieldDescription(
@@ -55,7 +56,7 @@ public final class KafkaTopicFieldDescription
         this.comment = comment;
         this.dataFormat = dataFormat;
         this.formatHint = formatHint;
-        this.hidden = hidden;
+        this.columnType = hidden ? ColumnType.HIDDEN : ColumnType.REGULAR;
     }
 
     @JsonProperty
@@ -97,20 +98,25 @@ public final class KafkaTopicFieldDescription
     @JsonProperty
     public boolean isHidden()
     {
-        return hidden;
+        return columnType == ColumnType.HIDDEN;
     }
 
-    KafkaColumnHandle getColumnHandle(String connectorId, boolean keyDecoder, int index)
+    @JsonProperty
+    public ColumnType getColumnType()
+    {
+        return columnType;
+    }
+
+    KafkaColumnHandle getColumnHandle(String connectorId, boolean keyDecoder)
     {
         return new KafkaColumnHandle(connectorId,
-                index,
                 getName(),
                 getType(),
                 getMapping(),
                 getDataFormat(),
                 getFormatHint(),
                 keyDecoder,
-                isHidden(),
+                getColumnType(),
                 false);
     }
 
@@ -122,7 +128,7 @@ public final class KafkaTopicFieldDescription
     @Override
     public int hashCode()
     {
-        return Objects.hash(name, type, mapping, dataFormat, formatHint, hidden);
+        return Objects.hash(name, type, mapping, dataFormat, formatHint, isHidden());
     }
 
     @Override
@@ -141,7 +147,7 @@ public final class KafkaTopicFieldDescription
                 Objects.equals(this.mapping, other.mapping) &&
                 Objects.equals(this.dataFormat, other.dataFormat) &&
                 Objects.equals(this.formatHint, other.formatHint) &&
-                Objects.equals(this.hidden, other.hidden);
+                Objects.equals(this.isHidden(), other.isHidden());
     }
 
     @Override
@@ -153,7 +159,7 @@ public final class KafkaTopicFieldDescription
                 .add("mapping", mapping)
                 .add("dataFormat", dataFormat)
                 .add("formatHint", formatHint)
-                .add("hidden", hidden)
+                .add("hidden", isHidden())
                 .toString();
     }
 }

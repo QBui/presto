@@ -81,7 +81,10 @@ public class KafkaRecordSet
         this.globalInternalFieldValueProviders = ImmutableSet.of(
                 KafkaInternalFieldDescription.PARTITION_ID_FIELD.forLongValue(split.getPartitionId()),
                 KafkaInternalFieldDescription.SEGMENT_START_FIELD.forLongValue(split.getStart()),
-                KafkaInternalFieldDescription.SEGMENT_END_FIELD.forLongValue(split.getEnd()));
+                KafkaInternalFieldDescription.SEGMENT_END_FIELD.forLongValue(split.getEnd()),
+                KafkaInternalFieldDescription.OFFSET_START_FIELD.forLongValue(split.getStart()),
+                KafkaInternalFieldDescription.OFFSET_END_FIELD.forLongValue(split.getEnd()),
+                KafkaInternalFieldDescription.TIMESTAMP_FIELD.forLongValue(split.getTimestamp()));
 
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
 
@@ -218,8 +221,8 @@ public class KafkaRecordSet
             fieldValueProviders.add(KafkaInternalFieldDescription.MESSAGE_LENGTH_FIELD.forLongValue(messageData.length));
             fieldValueProviders.add(KafkaInternalFieldDescription.KEY_FIELD.forByteValue(keyData));
             fieldValueProviders.add(KafkaInternalFieldDescription.KEY_LENGTH_FIELD.forLongValue(keyData.length));
-            fieldValueProviders.add(KafkaInternalFieldDescription.KEY_CORRUPT_FIELD.forBooleanValue(keyDecoder.decodeRow(keyData, null, fieldValueProviders, columnHandles, keyFieldDecoders)));
-            fieldValueProviders.add(KafkaInternalFieldDescription.MESSAGE_CORRUPT_FIELD.forBooleanValue(messageDecoder.decodeRow(messageData, null, fieldValueProviders, columnHandles, messageFieldDecoders)));
+            fieldValueProviders.add(KafkaInternalFieldDescription.KEY_CORRUPT_FIELD.forBooleanValue(keyDecoder.decodeRow(keyData, split.getKeyDataSchema(), null, fieldValueProviders, columnHandles, keyFieldDecoders)));
+            fieldValueProviders.add(KafkaInternalFieldDescription.MESSAGE_CORRUPT_FIELD.forBooleanValue(messageDecoder.decodeRow(messageData, split.getMessageDataSchema(), null, fieldValueProviders, columnHandles, messageFieldDecoders)));
 
             this.fieldValueProviders = new FieldValueProvider[columnHandles.size()];
 
@@ -304,7 +307,7 @@ public class KafkaRecordSet
         private void openFetchRequest()
         {
             if (messageAndOffsetIterator == null) {
-                log.debug("Fetching %d bytes from offset %d (%d - %d). %d messages read so far", KAFKA_READ_BUFFER_SIZE, cursorOffset, split.getStart(), split.getEnd(), totalMessages);
+                log.debug("Fetching %d bytes from offset %d, %d: (%d - %d). %d messages read so far", KAFKA_READ_BUFFER_SIZE, cursorOffset, split.getPartitionId(), split.getStart(), split.getEnd(), totalMessages);
                 FetchRequest req = new FetchRequestBuilder()
                         .clientId("presto-worker-" + Thread.currentThread().getName())
                         .addFetch(split.getTopicName(), split.getPartitionId(), cursorOffset, KAFKA_READ_BUFFER_SIZE)
@@ -321,6 +324,9 @@ public class KafkaRecordSet
                     throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
                 }
 
+                // sometimes fetchResponse has no error but does not contain any record either
+                // so it becomes a loop, cursor offset does not move
+                // if KAFKA_READ_BUFFER_SIZE is increased, fetch could stuck
                 messageAndOffsetIterator = fetchResponse.messageSet(split.getTopicName(), split.getPartitionId()).iterator();
             }
         }

@@ -11,40 +11,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.decoder.json;
+package com.facebook.presto.decoder.protobuf;
 
 import com.facebook.presto.decoder.DecoderColumnHandle;
 import com.facebook.presto.decoder.FieldDecoder;
 import com.facebook.presto.decoder.FieldValueProvider;
 import com.facebook.presto.decoder.RowDecoder;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.MissingNode;
 import com.google.common.base.Splitter;
+import com.google.protobuf.Descriptors;
+import com.google.protobuf.Message;
 
-import javax.inject.Inject;
-
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.google.common.base.Preconditions.checkState;
-
 /**
- * JSON specific row decoder.
+ * Decoder for protobuf object.
  */
-public class JsonRowDecoder
+public class ProtobufRowDecoder
         implements RowDecoder
 {
-    public static final String NAME = "json";
-
-    private final ObjectMapper objectMapper;
-
-    @Inject
-    JsonRowDecoder(ObjectMapper objectMapper)
-    {
-        this.objectMapper = objectMapper;
-    }
+    public static final String NAME = "protobuf";
 
     @Override
     public String getName()
@@ -60,9 +48,15 @@ public class JsonRowDecoder
             List<DecoderColumnHandle> columnHandles,
             Map<DecoderColumnHandle, FieldDecoder<?>> fieldDecoders)
     {
-        JsonNode tree;
+        Message protoRecord;
+        Method method;
+
         try {
-            tree = objectMapper.readTree(data);
+            String className = dataSchema;
+            Class<?> clazz = Class.forName(className);
+            method = clazz.getDeclaredMethod("parseFrom", byte[].class);
+
+            protoRecord = (Message) method.invoke(null, data);
         }
         catch (Exception e) {
             return true;
@@ -72,30 +66,35 @@ public class JsonRowDecoder
             if (columnHandle.isInternal()) {
                 continue;
             }
+
             @SuppressWarnings("unchecked")
-            FieldDecoder<JsonNode> decoder = (FieldDecoder<JsonNode>) fieldDecoders.get(columnHandle);
+            FieldDecoder<Object> decoder = (FieldDecoder<Object>) fieldDecoders.get(columnHandle);
 
             if (decoder != null) {
-                JsonNode node = locateNode(tree, columnHandle);
-                fieldValueProviders.add(decoder.decode(node, columnHandle));
+                Object element = locateElement(protoRecord, columnHandle);
+                fieldValueProviders.add(decoder.decode(element, columnHandle));
             }
         }
 
         return false;
     }
 
-    private static JsonNode locateNode(JsonNode tree, DecoderColumnHandle columnHandle)
+    private Object locateElement(Message element, DecoderColumnHandle columnHandle)
     {
-        String mapping = columnHandle.getMapping();
-        checkState(mapping != null, "No mapping for %s", columnHandle.getName());
-
-        JsonNode currentNode = tree;
-        for (String pathElement : Splitter.on('/').omitEmptyStrings().split(mapping)) {
-            if (!currentNode.has(pathElement)) {
-                return MissingNode.getInstance();
+        Object value = element;
+        for (String pathElement : Splitter.on('/').omitEmptyStrings().split(columnHandle.getMapping())) {
+            Descriptors.FieldDescriptor fieldDescriptor = ((Message) value).getDescriptorForType()
+                                                            .findFieldByName(pathElement);
+            Message gm = (Message) value;
+            value = null;
+            // if field does not exist, just return null
+            if (fieldDescriptor != null && fieldDescriptor.isRepeated() || gm.hasField(fieldDescriptor)) {
+                value = gm.getField(fieldDescriptor);
             }
-            currentNode = currentNode.path(pathElement);
+            if (value == null) {
+                return null;
+            }
         }
-        return currentNode;
+        return value;
     }
 }

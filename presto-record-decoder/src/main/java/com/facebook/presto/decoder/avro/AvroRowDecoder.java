@@ -11,40 +11,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.decoder.json;
+package com.facebook.presto.decoder.avro;
 
 import com.facebook.presto.decoder.DecoderColumnHandle;
 import com.facebook.presto.decoder.FieldDecoder;
 import com.facebook.presto.decoder.FieldValueProvider;
 import com.facebook.presto.decoder.RowDecoder;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.MissingNode;
 import com.google.common.base.Splitter;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.DecoderFactory;
 
-import javax.inject.Inject;
-
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.google.common.base.Preconditions.checkState;
-
 /**
- * JSON specific row decoder.
+ * Decoder for avro object.
  */
-public class JsonRowDecoder
+public class AvroRowDecoder
         implements RowDecoder
 {
-    public static final String NAME = "json";
-
-    private final ObjectMapper objectMapper;
-
-    @Inject
-    JsonRowDecoder(ObjectMapper objectMapper)
-    {
-        this.objectMapper = objectMapper;
-    }
+    public static final String NAME = "avro";
 
     @Override
     public String getName()
@@ -60,9 +50,14 @@ public class JsonRowDecoder
             List<DecoderColumnHandle> columnHandles,
             Map<DecoderColumnHandle, FieldDecoder<?>> fieldDecoders)
     {
-        JsonNode tree;
+        GenericDatumReader<GenericRecord> datumReader;
+        GenericRecord avroRecord;
+
         try {
-            tree = objectMapper.readTree(data);
+            Schema schema = (new Schema.Parser()).parse(dataSchema);
+            datumReader = new GenericDatumReader<>(schema);
+
+            avroRecord = datumReader.read(null, DecoderFactory.get().binaryDecoder(new ByteArrayInputStream(data), null));
         }
         catch (Exception e) {
             return true;
@@ -72,30 +67,28 @@ public class JsonRowDecoder
             if (columnHandle.isInternal()) {
                 continue;
             }
+
             @SuppressWarnings("unchecked")
-            FieldDecoder<JsonNode> decoder = (FieldDecoder<JsonNode>) fieldDecoders.get(columnHandle);
+            FieldDecoder<Object> decoder = (FieldDecoder<Object>) fieldDecoders.get(columnHandle);
 
             if (decoder != null) {
-                JsonNode node = locateNode(tree, columnHandle);
-                fieldValueProviders.add(decoder.decode(node, columnHandle));
+                Object element = locateElement(avroRecord, columnHandle);
+                fieldValueProviders.add(decoder.decode(element, columnHandle));
             }
         }
 
         return false;
     }
 
-    private static JsonNode locateNode(JsonNode tree, DecoderColumnHandle columnHandle)
+    private Object locateElement(GenericRecord element, DecoderColumnHandle columnHandle)
     {
-        String mapping = columnHandle.getMapping();
-        checkState(mapping != null, "No mapping for %s", columnHandle.getName());
-
-        JsonNode currentNode = tree;
-        for (String pathElement : Splitter.on('/').omitEmptyStrings().split(mapping)) {
-            if (!currentNode.has(pathElement)) {
-                return MissingNode.getInstance();
+        Object value = element;
+        for (String pathElement : Splitter.on('/').omitEmptyStrings().split(columnHandle.getMapping())) {
+            if (value == null) {
+                return null;
             }
-            currentNode = currentNode.path(pathElement);
+            value = ((GenericRecord) value).get(pathElement);
         }
-        return currentNode;
+        return value;
     }
 }

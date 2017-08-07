@@ -103,8 +103,8 @@ public class KafkaTableDescriptionSupplier
                     builder.put(tableName, new KafkaTopicDescription(tableName.getTableName(),
                             tableName.getSchemaName(),
                             definedTable,
-                            new KafkaTopicFieldGroup(DummyRowDecoder.NAME, ImmutableList.of()),
-                            new KafkaTopicFieldGroup(DummyRowDecoder.NAME, ImmutableList.of())));
+                            new KafkaTopicFieldGroup(DummyRowDecoder.NAME, "", false, ImmutableList.of()),
+                            new KafkaTopicFieldGroup(DummyRowDecoder.NAME, "", false, ImmutableList.of())));
                 }
             }
 

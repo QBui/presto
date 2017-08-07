@@ -80,7 +80,7 @@ public class TestISO8601JsonFieldDecoder
         List<DecoderColumnHandle> columns = ImmutableList.of(row1, row2, row3, row4, row5, row6);
         Set<FieldValueProvider> providers = new HashSet<>();
 
-        boolean corrupt = rowDecoder.decodeRow(json, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(json, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
 
         assertEquals(providers.size(), columns.size());
@@ -120,7 +120,7 @@ public class TestISO8601JsonFieldDecoder
         List<DecoderColumnHandle> columns = ImmutableList.of(row1, row2, row3, row4, row5, row6);
         Set<FieldValueProvider> providers = new HashSet<>();
 
-        boolean corrupt = rowDecoder.decodeRow(json, null, providers, columns, buildMap(columns));
+        boolean corrupt = rowDecoder.decodeRow(json, null, null, providers, columns, buildMap(columns));
         assertFalse(corrupt);
 
         assertEquals(providers.size(), columns.size());

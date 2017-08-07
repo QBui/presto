@@ -57,6 +57,9 @@
         <dep.nifty.version>0.15.1</dep.nifty.version>
         <dep.swift.version>0.15.2</dep.swift.version>
 
+        <dep.protobuf.version>2.6.1</dep.protobuf.version>
+        <dep.avro.version>1.8.1</dep.avro.version>
+
         <!-- use a fractional hour timezone offset for tests -->
         <air.test.timezone>Asia/Katmandu</air.test.timezone>
         <air.test.parallel>methods</air.test.parallel>
@@ -927,6 +930,18 @@
                 <groupId>com.facebook.presto.cassandra</groupId>
                 <artifactId>cassandra-driver</artifactId>
                 <version>3.1.4-1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${dep.protobuf.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.avro</groupId>
+                <artifactId>avro</artifactId>
+                <version>${dep.avro.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

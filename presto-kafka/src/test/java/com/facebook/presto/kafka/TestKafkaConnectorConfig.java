@@ -32,7 +32,10 @@ public class TestKafkaConnectorConfig
                 .setDefaultSchema("default")
                 .setTableNames("")
                 .setTableDescriptionDir(new File("etc/kafka/"))
-                .setHideInternalColumns(true));
+                .setHideInternalColumns(true)
+                .setMetastoreEnabled(false)
+                .setMetastoreHost("localhost")
+                .setMetastoreIndex(0));
     }
 
     @Test
@@ -46,6 +49,9 @@ public class TestKafkaConnectorConfig
                 .put("kafka.connect-timeout", "1h")
                 .put("kafka.buffer-size", "1MB")
                 .put("kafka.hide-internal-columns", "false")
+                .put("kafka.metastore.enabled", "true")
+                .put("kafka.metastore.host", "127.0.0.1")
+                .put("kafka.metastore.index", "1")
                 .build();
 
         KafkaConnectorConfig expected = new KafkaConnectorConfig()
@@ -55,7 +61,10 @@ public class TestKafkaConnectorConfig
                 .setNodes("localhost:12345, localhost:23456")
                 .setKafkaConnectTimeout("1h")
                 .setKafkaBufferSize("1MB")
-                .setHideInternalColumns(false);
+                .setHideInternalColumns(false)
+                .setMetastoreEnabled(true)
+                .setMetastoreHost("127.0.0.1")
+                .setMetastoreIndex(1);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

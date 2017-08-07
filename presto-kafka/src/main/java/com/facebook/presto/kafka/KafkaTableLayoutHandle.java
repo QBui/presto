@@ -13,9 +13,13 @@
  */
 package com.facebook.presto.kafka;
 
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
@@ -23,17 +27,45 @@ public class KafkaTableLayoutHandle
         implements ConnectorTableLayoutHandle
 {
     private final KafkaTableHandle table;
+    private final List<ColumnHandle> partitionColumns;
+    private final List<KafkaPartition> partitions;
 
     @JsonCreator
-    public KafkaTableLayoutHandle(@JsonProperty("table") KafkaTableHandle table)
+    public KafkaTableLayoutHandle(
+            @JsonProperty("table") KafkaTableHandle table,
+            @JsonProperty("partitionColumns") List<ColumnHandle> partitionColumns)
     {
         this.table = requireNonNull(table, "table is null");
+        this.partitionColumns = ImmutableList.copyOf(requireNonNull(partitionColumns, "partitionColumns is null"));
+        this.partitions = null;
+    }
+
+    public KafkaTableLayoutHandle(
+            KafkaTableHandle table,
+            List<ColumnHandle> partitionColumns,
+            List<KafkaPartition> partitions)
+    {
+        this.table = requireNonNull(table, "table is null");
+        this.partitionColumns = ImmutableList.copyOf(requireNonNull(partitionColumns, "partitionColumns is null"));
+        this.partitions = partitions;
     }
 
     @JsonProperty
     public KafkaTableHandle getTable()
     {
         return table;
+    }
+
+    @JsonProperty
+    public List<ColumnHandle> getPartitionColumns()
+    {
+        return partitionColumns;
+    }
+
+    @JsonProperty
+    public List<KafkaPartition> getPartitions()
+    {
+        return partitions;
     }
 
     @Override

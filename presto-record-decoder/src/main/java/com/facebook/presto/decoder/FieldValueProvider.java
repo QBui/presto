@@ -28,6 +28,11 @@ public abstract class FieldValueProvider
         throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to boolean not supported");
     }
 
+    public int getInteger()
+    {
+        throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to long not supported");
+    }
+
     public long getLong()
     {
         throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to long not supported");

@@ -40,6 +40,7 @@ public class HashRedisRowDecoder
 
     @Override
     public boolean decodeRow(byte[] data,
+            String dataSchema,
             Map<String, String> dataMap,
             Set<FieldValueProvider> fieldValueProviders,
             List<DecoderColumnHandle> columnHandles,

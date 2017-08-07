@@ -26,6 +26,7 @@ import io.airlift.slice.Slices;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.facebook.presto.kafka.KafkaColumnHandle.ColumnType;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -95,12 +96,17 @@ public class KafkaInternalFieldDescription
      */
     public static final KafkaInternalFieldDescription KEY_LENGTH_FIELD = new KafkaInternalFieldDescription("_key_length", BigintType.BIGINT, "Total number of key bytes");
 
+    public static final KafkaInternalFieldDescription TIMESTAMP_FIELD = new KafkaInternalFieldDescription("_timestamp", BigintType.BIGINT, "partition key");
+    public static final KafkaInternalFieldDescription OFFSET_START_FIELD = new KafkaInternalFieldDescription("_offset_start", BigintType.BIGINT, "partition key");
+    public static final KafkaInternalFieldDescription OFFSET_END_FIELD = new KafkaInternalFieldDescription("_offset_end", BigintType.BIGINT, "partition key");
+
     public static Set<KafkaInternalFieldDescription> getInternalFields()
     {
         return ImmutableSet.of(PARTITION_ID_FIELD, PARTITION_OFFSET_FIELD,
                 SEGMENT_START_FIELD, SEGMENT_END_FIELD, SEGMENT_COUNT_FIELD,
                 KEY_FIELD, KEY_CORRUPT_FIELD, KEY_LENGTH_FIELD,
-                MESSAGE_FIELD, MESSAGE_CORRUPT_FIELD, MESSAGE_LENGTH_FIELD);
+                MESSAGE_FIELD, MESSAGE_CORRUPT_FIELD, MESSAGE_LENGTH_FIELD,
+                OFFSET_START_FIELD, OFFSET_END_FIELD, TIMESTAMP_FIELD);
     }
 
     private final String name;
@@ -128,17 +134,16 @@ public class KafkaInternalFieldDescription
         return type;
     }
 
-    KafkaColumnHandle getColumnHandle(String connectorId, int index, boolean hidden)
+    KafkaColumnHandle getColumnHandle(String connectorId, int index)
     {
         return new KafkaColumnHandle(connectorId,
-                index,
                 getName(),
                 getType(),
                 null,
                 null,
                 null,
                 false,
-                hidden,
+                ColumnType.REGULAR,
                 true);
     }
 

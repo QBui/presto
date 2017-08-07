@@ -51,7 +51,10 @@ public final class KafkaTableHandle
     private final String topicName;
 
     private final String keyDataFormat;
+    private final String keyDataSchema;
+
     private final String messageDataFormat;
+    private final String messageDataSchema;
 
     @JsonCreator
     public KafkaTableHandle(
@@ -60,14 +63,18 @@ public final class KafkaTableHandle
             @JsonProperty("tableName") String tableName,
             @JsonProperty("topicName") String topicName,
             @JsonProperty("keyDataFormat") String keyDataFormat,
-            @JsonProperty("messageDataFormat") String messageDataFormat)
+            @JsonProperty("keyDataSchema") String keyDataSchema,
+            @JsonProperty("messageDataFormat") String messageDataFormat,
+            @JsonProperty("messageDataSchema") String messageDataSchema)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
         this.topicName = requireNonNull(topicName, "topicName is null");
         this.keyDataFormat = requireNonNull(keyDataFormat, "keyDataFormat is null");
+        this.keyDataSchema = keyDataSchema;
         this.messageDataFormat = requireNonNull(messageDataFormat, "messageDataFormat is null");
+        this.messageDataSchema = messageDataSchema;
     }
 
     @JsonProperty
@@ -101,9 +108,21 @@ public final class KafkaTableHandle
     }
 
     @JsonProperty
+    public String getKeyDataSchema()
+    {
+        return keyDataSchema;
+    }
+
+    @JsonProperty
     public String getMessageDataFormat()
     {
         return messageDataFormat;
+    }
+
+    @JsonProperty
+    public String getMessageDataSchema()
+    {
+        return messageDataSchema;
     }
 
     public SchemaTableName toSchemaTableName()
@@ -145,7 +164,9 @@ public final class KafkaTableHandle
                 .add("tableName", tableName)
                 .add("topicName", topicName)
                 .add("keyDataFormat", keyDataFormat)
+                .add("keyDataSchema", keyDataSchema)
                 .add("messageDataFormat", messageDataFormat)
+                .add("messageDataSchema", messageDataSchema)
                 .toString();
     }
 }
